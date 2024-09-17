@@ -28,6 +28,20 @@
 
 class DivPlatformNES: public DivDispatch {
   struct Channel: public SharedChannel<signed char> {
+    struct TFX {
+      int period;
+      float counter;
+      int offset, mode, lowBound, out, arpoff;
+      TFX():
+        period(0),
+        counter(0),
+        arpoff(0),
+        offset(1),
+        mode(-1),
+        lowBound(0),
+        out(0) {}
+    } tfx;
+
     int prevFreq;
     unsigned char duty, sweep, envMode, len;
     bool sweepChanged, furnaceDac, setPos;
@@ -38,6 +52,7 @@ class DivPlatformNES: public DivDispatch {
       sweep(8),
       envMode(3),
       len(0x1f),
+      tfx(TFX()),
       sweepChanged(false),
       furnaceDac(false),
       setPos(false) {}
@@ -92,6 +107,7 @@ class DivPlatformNES: public DivDispatch {
   void acquire_NSFPlayE(short** buf, size_t len);
 
   public:
+    void runTFX(int runRate=0, int runMult=0);
     void acquire(short** buf, size_t len);
     int dispatch(DivCommand c);
     void* getChanState(int chan);

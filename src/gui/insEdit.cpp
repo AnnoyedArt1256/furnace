@@ -7615,6 +7615,18 @@ void FurnaceGUI::drawInsEdit() {
           drawMacros(macroList,macroEditStateMacros);
           ImGui::EndTabItem();
         }
+        if (ins->type==DIV_INS_NES) {
+          if (ImGui::BeginTabItem(_("Timer Macros")))
+          {
+            ImGui::Text(_("warning: timer effects are not supported by VGM export!"));
+            macroList.push_back(FurnaceGUIMacroDesc(_("Timer FX"),&ins->std.ex6Macro,0,1,64,uiColors[GUI_COLOR_MACRO_OTHER],false,NULL,NULL,true));
+            macroList.push_back(FurnaceGUIMacroDesc(_("TFX Offset"),&ins->std.ex7Macro,-63,64,160,uiColors[GUI_COLOR_MACRO_PITCH],true));
+            macroList.push_back(FurnaceGUIMacroDesc(_("Arp Offset"),&ins->std.ex8Macro,-16,15,160,uiColors[GUI_COLOR_MACRO_PITCH],true,NULL,macroHoverNote,false,NULL,true,ins->std.ex8Macro.val));
+            macroList.push_back(FurnaceGUIMacroDesc(_("PWM Boundary"),&ins->std.amsMacro,0,15,64,uiColors[GUI_COLOR_MACRO_OTHER]));
+            drawMacros(macroList,macroEditStateMacros);
+            ImGui::EndTabItem();
+          }
+        }
         if (ins->type==DIV_INS_AY) {
           if (!ins->amiga.useSample)
           {

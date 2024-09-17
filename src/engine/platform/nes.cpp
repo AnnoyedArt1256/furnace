@@ -108,7 +108,7 @@ void DivPlatformNES::doWrite(unsigned short addr, unsigned char data) {
 void DivPlatformNES::acquire_puNES(short** buf, size_t len) {
   for (size_t i=0; i<len; i++) {
     doPCM;
-
+    runTFX();
     if (!writes.empty()) {
       QueuedWrite w=writes.front();
       doWrite(w.addr,w.val);
@@ -141,7 +141,7 @@ void DivPlatformNES::acquire_NSFPlay(short** buf, size_t len) {
   int out2[2];
   for (size_t i=0; i<len; i++) {
     doPCM;
-
+    runTFX(0,8);
     if (!writes.empty()) {
       QueuedWrite w=writes.front();
       doWrite(w.addr,w.val);
@@ -175,7 +175,7 @@ void DivPlatformNES::acquire_NSFPlayE(short** buf, size_t len) {
   int out2[2];
   for (size_t i=0; i<len; i++) {
     doPCM;
-
+    runTFX(0,8);
     if (!writes.empty()) {
       QueuedWrite w=writes.front();
       doWrite(w.addr,w.val);
@@ -258,6 +258,34 @@ unsigned char DivPlatformNES::calcDPCMRate(int inRate) {
   if (inRate<23500) return 13;
   if (inRate<29000) return 14;
   return 15;
+}
+
+void DivPlatformNES::runTFX(int runRate, int runMult) {
+  float counterRatio=1.0;
+  if (runMult!=0) counterRatio*=(float)runMult;
+  if (runRate!=0) counterRatio=(double)rate/(double)runRate;
+  for (int i=0; i<2; i++) {
+    if (chan[i].active && chan[i].tfx.mode!=-1) {
+      if (chan[i].tfx.mode == -1 && !isMuted[i]) {
+        continue;
+      }
+      chan[i].tfx.counter += counterRatio/8.0;
+      if (chan[i].tfx.counter >= chan[i].tfx.period && chan[i].tfx.mode == 0) {
+        chan[i].tfx.counter -= chan[i].tfx.period;
+        chan[i].tfx.out ^= 1;
+        int output = ((chan[i].tfx.out) ? chan[i].outVol : (chan[i].tfx.lowBound-(15-chan[i].outVol)));
+        // TODO: fix this stupid crackling noise that happens
+        // everytime the volume changes
+        output = (output <= 0) ? 0 : output; // underflow
+        output = (output >= 15) ? 15 : output; // overflow
+        output &= 15; // i don't know if i need this but i'm too scared to remove it
+        if (!isMuted[i]) {
+          rWrite(0x4000+i*4,(chan[i].envMode<<4)|output|((chan[i].duty&3)<<6));
+          //rWrite(0x4011,output<<2);
+        }
+      }
+    }
+  }
 }
 
 void DivPlatformNES::tick(bool sysTick) {
@@ -381,6 +409,31 @@ void DivPlatformNES::tick(bool sysTick) {
       if (chan[i].keyOn) chan[i].keyOn=false;
       if (chan[i].keyOff) chan[i].keyOff=false;
       chan[i].freqChanged=false;
+    }
+    if (chan[i].std.ex6.had) {
+      // 0 - disable timer
+      // 1 - pwm
+      switch (chan[i].std.ex6.val) {
+        case 1:
+          chan[i].tfx.mode = 0;
+          break;
+        default:
+          chan[i].tfx.mode = -1; // this is a workaround!
+          break;
+      }
+    }
+    if (chan[i].std.ex7.had) {
+      chan[i].tfx.offset=chan[i].std.ex7.val;
+    }
+    if (chan[i].std.ex8.had) {
+      chan[i].tfx.arpoff=chan[i].std.ex8.val;
+    }
+    if (chan[i].std.ams.had) {
+      chan[i].tfx.lowBound=chan[i].std.ams.val;
+    }
+    if (i<2) {
+      int freq = (int)((float)chan[i].freq/(powf(2,((float)chan[i].tfx.arpoff)/12.0)));
+      chan[i].tfx.period=freq+1+chan[i].tfx.offset;
     }
   }
 
