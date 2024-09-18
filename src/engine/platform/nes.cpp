@@ -299,7 +299,7 @@ void DivPlatformNES::tick(bool sysTick) {
         rWrite(0x4000+i*4,(chan[i].outVol==0)?0:linearCount);
         chan[i].freqChanged=true;
       } else {
-        rWrite(0x4000+i*4,(chan[i].envMode<<4)|chan[i].outVol|((chan[i].duty&3)<<6));
+        if (chan[i].tfx.mode == -1) rWrite(0x4000+i*4,(chan[i].envMode<<4)|chan[i].outVol|((chan[i].duty&3)<<6));
       }
     }
     if (NEW_ARP_STRAT) {
@@ -326,7 +326,7 @@ void DivPlatformNES::tick(bool sysTick) {
         }
       }
       if (i!=2) {
-        rWrite(0x4000+i*4,(chan[i].envMode<<4)|chan[i].outVol|((chan[i].duty&3)<<6));
+        if (chan[i].tfx.mode == -1) rWrite(0x4000+i*4,(chan[i].envMode<<4)|chan[i].outVol|((chan[i].duty&3)<<6));
       } else if (isE) {
         rWrite(0x4000+9,chan[i].duty);
       }
