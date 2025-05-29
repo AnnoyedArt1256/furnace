@@ -19,13 +19,25 @@
 
 #include "fileOpsCommon.h"
 
-static void readGT2Table(uint16_t *table, SafeReader& reader) {
-    uint8_t table_size=reader.readC();
+static void getGT2PatPos(size_t orig_pat_pos, size_t pat_num, SafeReader& reader) {
+  reader.seek(orig_pat_pos,SEEK_SET);  
+  size_t total_patnum=(size_t)((unsigned char)reader.readC());
+  if ((pat_num >= total_patnum) || (pat_num == 0)) {
+    return;
+  }
+  for (size_t i=0; i<pat_num; i++) {
+    unsigned char pat_rows=reader.readC();
+    reader.seek(pat_rows*4,SEEK_CUR);
+  }
+}
+
+static void readGT2Table(unsigned short *table, SafeReader& reader) {
+    unsigned char table_size=reader.readC();
     for (int i=0; i<table_size; i++) {
-        table[i+1]=((uint16_t)reader.readC())<<8; // left side
+        table[i+1]=((unsigned short)reader.readC())<<8; // left side
     }
     for (int i=0; i<table_size; i++) {
-        table[i+1]|=((uint16_t)reader.readC())&0xff; // right side
+        table[i+1]|=((unsigned short)reader.readC())&0xff; // right side
         logD("%02x: %04x\n",i+1,table[i+1]);
     }
 }
@@ -37,15 +49,20 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
   int ordCount=0;
   std::vector<int> patPtr;
 
-  uint16_t wavetable[256];
-  uint16_t pulsetable[256];
-  uint16_t filtertable[256];
-  uint16_t speedtable[256];
-  memset(wavetable,0,256*sizeof(uint16_t));
-  memset(pulsetable,0,256*sizeof(uint16_t));
-  memset(filtertable,0,256*sizeof(uint16_t));
-  memset(speedtable,0,256*sizeof(uint16_t));
+  unsigned short wavetable[256];
+  unsigned short pulsetable[256];
+  unsigned short filtertable[256];
+  unsigned short speedtable[256];
+  memset(wavetable,0,256*sizeof(unsigned short));
+  memset(pulsetable,0,256*sizeof(unsigned short));
+  memset(filtertable,0,256*sizeof(unsigned short));
+  memset(speedtable,0,256*sizeof(unsigned short));
+  unsigned char* pats_unrolled = new unsigned char[6 * 4096]; // chCount
+  signed char* pats_unrolled_trans = new signed char[6 * 4096]; // chCount
+  memset(pats_unrolled,0,(6*4096)*sizeof(unsigned char));
+  memset(pats_unrolled_trans,0,(6*4096)*sizeof(signed char));
 
+  size_t pattern_pos_start;
   SafeReader reader=SafeReader(file,len);
   try {
     DivSong ds;
@@ -56,6 +73,8 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
     ds.rowResetsArpPos=true;
     ds.ignoreJumpAtEnd=false;
     ds.delayBehavior=0;
+    ds.subsong[0]->speeds.val[0]=1;
+    ds.subsong[0]->speeds.len=1;
 
     // get instruments
     if (!reader.seek(101,SEEK_SET)) {
@@ -63,19 +82,41 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
       throw EndOfFileException(&reader,reader.tell());
     }
 
-    // skip orders for now
-    for (int ch=0; ch<6; ch++) {
-        uint8_t order_cnt=reader.readC();
+    // unroll orders
+    for (int ch=0; ch<3; ch++) {
+        unsigned char order_cnt=reader.readC();
+        unsigned char rept_amt=1;
+        signed char cur_trans=0;
+        unsigned int pat_ind=0; 
         for (int f=0; f<order_cnt+1; f++) {
-            if (((unsigned char)reader.readC())==0xFF) {
-                reader.readC(); // loop pos
+            unsigned char pat_byte=reader.readC();
+            if (pat_byte <= 0xCF) {
+              // pattern numbers
+              for (size_t d=0; d<rept_amt; d++) {
+                pats_unrolled[(pat_ind%4096)+(ch*4096)]=pat_byte;
+                pats_unrolled_trans[(pat_ind%4096)+(ch*4096)]=cur_trans;
+                pat_ind++;
+              }
+            } else if (pat_byte <= 0xDF) {
+              // repeat commands
+              rept_amt=(pat_byte-0xD0)+1;
+              continue;
+            } else {
+              // transpose commands
+              cur_trans=pat_byte-0xF0;
+            }
+            if (rept_amt != 1) rept_amt=1;
+            if (pat_byte==0xFF) {
+                pats_unrolled[(pat_ind%4096)+(ch*4096)]=0xFF;
+                pats_unrolled_trans[(pat_ind%4096)+(ch*4096)]=reader.readC(); // loop pos
+                pat_ind++;
                 break;
             }
         }
         //reader.seek(order_cnt+1,SEEK_CUR);
     }
 
-    int insCount=(int)((uint8_t)reader.readC());
+    int insCount=(int)((unsigned char)reader.readC());
     size_t ins_start_pos=reader.tell();
     reader.seek((16+9)*insCount,SEEK_CUR); // skip instruments for tables
 
@@ -83,6 +124,7 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
     readGT2Table(pulsetable,reader);
     readGT2Table(filtertable,reader);
     readGT2Table(speedtable,reader);
+    pattern_pos_start=reader.tell();
 
     if (!reader.seek(ins_start_pos,SEEK_SET)) {
       logD("couldn't seek to instrument pos...");
@@ -108,18 +150,18 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
         +8      byte    Hard restart/1st frame waveform
         +9      16      Instrument name
       */
-      uint8_t ad=reader.readC();
+      unsigned char ad=reader.readC();
       ins->c64.a=(ad>>4)&0xf;
       ins->c64.d=ad&0xf;
-      uint8_t sr=reader.readC();
+      unsigned char sr=reader.readC();
       ins->c64.s=(sr>>4)&0xf;
       ins->c64.r=sr&0xf;
       // wavetable (waveform and arpeggio)
-      uint8_t wav_pointer=reader.readC();
+      unsigned char wav_pointer=reader.readC();
       logD("wave pointer for ins %02x: %02x\n",i+1,wav_pointer);
-      uint8_t wav_ptr_loop=wav_pointer;
+      unsigned char wav_ptr_loop=wav_pointer;
       int wav_ins_loop=1;
-      uint32_t arpval=0;
+      unsigned int arpval=0;
       DivInstrumentMacro *wave=&ins->std.waveMacro;
       DivInstrumentMacro *arp=&ins->std.arpMacro;
       DivInstrumentMacro *gate=&ins->std.ex4Macro;
@@ -128,13 +170,13 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
       reader.readC();
       reader.readC();
       reader.readC();
-      uint8_t curwav=reader.readC();
+      unsigned char curwav=reader.readC();
       logD("%02x",curwav);
-      uint8_t delay=0;
+      unsigned char delay=0;
       for (int tick=0;tick<256;tick++) {
         if (delay==0 && tick) {
-            uint8_t left=(wavetable[wav_pointer]>>8)&0xff;
-            uint8_t right=wavetable[wav_pointer]&0xff;
+            unsigned char left=(wavetable[wav_pointer]>>8)&0xff;
+            unsigned char right=wavetable[wav_pointer]&0xff;
             if (left <= 0xEF) {
                 // arpeggio
                 if (right <= 0x5F) {
@@ -191,9 +233,9 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
       ds.ins.push_back(ins);
     }
     ds.insLen=ds.ins.size();
-
+  
     // orders
-    ds.subsong[0]->ordersLen=ordCount=1;
+    ds.subsong[0]->ordersLen=ordCount=12;
     if (ds.subsong[0]->ordersLen<1 || ds.subsong[0]->ordersLen>128) {
       logD("invalid order count!");
       throw EndOfFileException(&reader,reader.tell());
@@ -206,22 +248,98 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
     }
 
     // patterns
-    int patMax = 1;
-    ds.subsong[0]->patLen=64;
+    unsigned short pat_funk[3] = {0,0,0}; // chCount
+    unsigned short pat_funk_mode[3] = {0,0,0}; // chCount
+    short pat_tick[3] = {6,6,6}; // chCount
+    unsigned char pat_speed[3] = {6,6,6}; // chCount
+    unsigned short order_ind[3] = {0,0,0}; // chCount
+    short pat_row[3] = {0,0,0}; // chCount
+    int patMax = ordCount-1;
+    int patLen=256;
+    ds.subsong[0]->patLen=patLen;
     for (int pat=0; pat<=patMax; pat++) {
       DivPattern* chpats[DIV_MAX_CHANS];
       for (int ch=0; ch<chCount; ch++) {
         chpats[ch]=ds.subsong[0]->pat[ch].getPattern(pat,true);
       }
-      for (int row=0; row<64; row++) {
+      for (int row=0; row<patLen; row++) {
         for (int ch=0; ch<chCount; ch++) {
+          unsigned short pat_ind=order_ind[ch];
+          logD("%02x/%04x: %02x",ch,pat_ind%4096,pats_unrolled[(pat_ind%4096)+(ch*4096)]);
+          getGT2PatPos(pattern_pos_start,pats_unrolled[(pat_ind%4096)+(ch*4096)],reader);
+          unsigned char pat_total_rows=reader.readC();
+          // just in case...
+          reader.seek((pat_row[ch]>=pat_total_rows?(pat_total_rows-1):pat_row[ch])*4,SEEK_CUR);
           short* dstrow=chpats[ch]->data[row];
+          short* prevrow=chpats[ch]->data[row]; // stub
+          if (row == 0 && pat == 0) {
+              prevrow=chpats[ch]->data[row];
+          } else if (row != 0) {
+              prevrow=chpats[ch]->data[row-1];
+          } else {
+              prevrow=(ds.subsong[0]->pat[ch].getPattern(pat-1,true))->data[patLen-1];
+          }
+          unsigned char tick_speed = pat_speed[ch];
+          if (pat_funk[ch] != 0) {
+            tick_speed = (pat_funk[ch]>>(8-(pat_funk_mode[ch]<<3)))&0xff;
+          }
+          if ((++pat_tick[ch]) >= tick_speed) {
+            if (pat_funk[ch] != 0) pat_funk_mode[ch] ^= 1;
+            pat_tick[ch]=0;
+            if ((++pat_row[ch]) >= pat_total_rows) {
+              order_ind[ch]++;
+              pat_ind=order_ind[ch];
+              pat_row[ch]=1;
+              getGT2PatPos(pattern_pos_start,pats_unrolled[(pat_ind%4096)+(ch*4096)],reader);
+              pat_total_rows=reader.readC(); 
+            }
+            unsigned char notenumber=reader.readC();
+            unsigned char insnum=reader.readC();
+            unsigned char cmd=reader.readC();
+            unsigned char cmddata=reader.readC();
+            switch (cmd) {
+              case 0xE: { // set funk
+                if (cmddata == 0) break; // TODO: is this correct behaviour?
+                for (size_t n=0;n<chCount;n++) {
+                  pat_funk[n]=speedtable[cmddata];
+                  pat_funk_mode[n]=0;
+                }
+                break;
+              }
+              case 0xF: { // set speed
+                if ((cmddata&0x7f) >= 3) {
+                  if (cmddata & 0x80) {
+                    pat_speed[ch]=(cmddata&0x7f);
+                    pat_funk[ch]=0;
+                    pat_funk_mode[ch]=0;
+                  } else {
+                    for (size_t n=0;n<chCount;n++) {
+                      pat_speed[n]=(cmddata&0x7f);
+                      pat_funk[n]=0;
+                      pat_funk_mode[n]=0;
+                    }
+                  }
+                }
+              }
+              default:
+                break;
+            }
+            if (notenumber >= 0x60 && notenumber <= 0xBC) {
+              short note=notenumber-0x60;
+              prevrow[0]=100;
+              dstrow[0]=((note+11)%12)+1;
+              dstrow[1]=(note-1)/12;
+            }
+            if (insnum != 0) {
+              dstrow[2]=insnum-1;
+            }
+          }
         }
       }
     }
 
     ds.subsong[0]->hz=50;
-    ds.systemLen=(chCount+3)/4;
+    ds.systemLen=chCount/3;
     for(int i=0; i<ds.systemLen; i++) {
       ds.system[i]=DIV_SYSTEM_C64_8580;
       ds.systemFlags[i].set("clockSel",1); // PAL
@@ -265,5 +383,7 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
     //logE("invalid info header!");
     lastError="invalid info header!";
   }
+  delete[] pats_unrolled;
+  delete[] pats_unrolled_trans;
   return success;
 }
