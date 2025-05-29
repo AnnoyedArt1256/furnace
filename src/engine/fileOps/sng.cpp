@@ -159,13 +159,16 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
       // wavetable (waveform and arpeggio)
       unsigned char wav_pointer=reader.readC();
       logD("wave pointer for ins %02x: %02x\n",i+1,wav_pointer);
-      unsigned char wav_ptr_loop=wav_pointer;
-      int wav_ins_loop=1;
+      unsigned char ptr_loop=wav_pointer;
+      int ins_loop=1;
       unsigned int arpval=0;
       DivInstrumentMacro *wave=&ins->std.waveMacro;
       DivInstrumentMacro *arp=&ins->std.arpMacro;
       DivInstrumentMacro *gate=&ins->std.ex4Macro;
-      reader.readC();
+      DivInstrumentMacro *duty=&ins->std.dutyMacro;
+      ins->c64.dutyIsAbs=true;
+      unsigned char pulse_pointer=reader.readC();
+      logD("pulse pointer for ins %02x: %02x\n",i+1,pulse_pointer);
       reader.readC();
       reader.readC();
       reader.readC();
@@ -208,14 +211,14 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
                 if (right == 0) {
                     break;
                 } else {
-                    if (right == wav_ptr_loop) {
-                        wave->loop=wav_ins_loop;
-                        arp->loop=wav_ins_loop;
-                        gate->loop=wav_ins_loop;
+                    if (right == ptr_loop) {
+                        wave->loop=ins_loop;
+                        arp->loop=ins_loop;
+                        gate->loop=ins_loop;
                         break;
                     }
-                    wav_ins_loop=tick;
-                    wav_ptr_loop=right;
+                    ins_loop=tick;
+                    ptr_loop=right;
                     wav_pointer=right;
                 }
             }
@@ -228,7 +231,48 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
         wave->val[tick]=(curwav>>4)&0xf;
         gate->val[tick]=curwav&0xf;
         arp->val[tick]=arpval;
-    }
+      }
+
+      unsigned short curpulse=0x800;
+      int8_t sweep_amt=0;
+      delay=0;
+      ptr_loop=pulse_pointer;
+      ins_loop=1;
+      for (int tick=0;tick<256;tick++) {
+        if (delay==0 && tick) {
+            unsigned char left=(pulsetable[pulse_pointer]>>8)&0xff;
+            unsigned char right=pulsetable[pulse_pointer]&0xff;
+            if (left == 0xFF) {
+                // jump to $NN
+                if (right == 0) {
+                    break;
+                } else {
+                    if (right == ptr_loop) {
+                        duty->loop=ins_loop;
+                        break;
+                    }
+                    ins_loop=tick;
+                    ptr_loop=right;
+                    pulse_pointer=right;
+                }
+            } else if (left & 0x80) {
+              // set pulse
+              curpulse=pulsetable[pulse_pointer]&0xfff;
+              pulse_pointer++;
+              sweep_amt=0;
+            } else {
+              // sweep pulse
+              delay=left;
+              sweep_amt=(int8_t)right;
+              pulse_pointer++;
+            }
+        } else if (tick) {
+            delay--;
+        }
+        curpulse += (int8_t)sweep_amt;
+        duty->len=tick+1;
+        duty->val[tick]=curpulse;
+      }
       ins->name=reader.readString(16);
       ds.ins.push_back(ins);
     }
@@ -271,14 +315,24 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
           // just in case...
           reader.seek((pat_row[ch]>=pat_total_rows?(pat_total_rows-1):pat_row[ch])*4,SEEK_CUR);
           short* dstrow=chpats[ch]->data[row];
-          short* prevrow=chpats[ch]->data[row]; // stub
+          // yes GT2 is really weird in terms of HR
+
+          short* prevrow=chpats[ch]->data[row]; // last frame
           if (row == 0 && pat == 0) {
-              prevrow=chpats[ch]->data[row];
           } else if (row != 0) {
               prevrow=chpats[ch]->data[row-1];
           } else {
               prevrow=(ds.subsong[0]->pat[ch].getPattern(pat-1,true))->data[patLen-1];
           }
+
+          short* prevrow2=chpats[ch]->data[row]; // second to last frame
+          if (row < 2 && pat == 0) {
+          } else if (row > 1) {
+              prevrow2=chpats[ch]->data[row-2];
+          } else {
+              prevrow2=(ds.subsong[0]->pat[ch].getPattern(pat-1,true))->data[patLen-row];
+          }
+
           unsigned char tick_speed = pat_speed[ch];
           if (pat_funk[ch] != 0) {
             tick_speed = (pat_funk[ch]>>(8-(pat_funk_mode[ch]<<3)))&0xff;
@@ -298,6 +352,16 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
             unsigned char cmd=reader.readC();
             unsigned char cmddata=reader.readC();
             switch (cmd) {
+              case 0x5: { // set attack and decay
+                prevrow[4]=0x20;
+                prevrow[5]=cmddata;
+                break;
+              }
+              case 0x6: { // set sustain and release
+                prevrow[4]=0x21;
+                prevrow[5]=cmddata;
+                break;
+              }
               case 0xE: { // set funk
                 if (cmddata == 0) break; // TODO: is this correct behaviour?
                 for (size_t n=0;n<chCount;n++) {
@@ -326,9 +390,17 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
             }
             if (notenumber >= 0x60 && notenumber <= 0xBC) {
               short note=notenumber-0x60;
-              prevrow[0]=100;
+              if (!(row < 2 && pat == 0)) {
+                prevrow2[0]=100; // rel (and set ADSR to $0F00)
+                //prevrow[4]=0x20;
+                //prevrow[5]=0x0F;
+                //prevrow[6]=0x21;
+                //prevrow[7]=0x00;
+              }
               dstrow[0]=((note+11)%12)+1;
               dstrow[1]=(note-1)/12;
+            } else if (notenumber == 0xBE) {
+              dstrow[0]=101;
             }
             if (insnum != 0) {
               dstrow[2]=insnum-1;
@@ -349,11 +421,7 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
       ds.subsong[0]->chanShowChanOsc[i]=true;
       ds.subsong[0]->chanName[i]=fmt::sprintf("Channel %d",i+1);
       ds.subsong[0]->chanShortName[i]=fmt::sprintf("C%d",i+1);
-    }
-    for(int i=chCount; i<ds.systemLen*4; i++) {
-      ds.subsong[0]->pat[i].effectCols=1;
-      ds.subsong[0]->chanShow[i]=false;
-      ds.subsong[0]->chanShowChanOsc[i]=false;
+      ds.subsong[0]->pat[i].effectCols=3;
     }
 
     // find subsongs
