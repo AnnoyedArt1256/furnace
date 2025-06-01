@@ -223,7 +223,10 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
                 // waveform $00-$0F (INAUDIBLE)
                 curwav = 0x00;
                 wav_pointer++;
-            } else if (left == 0xFF) {
+            } else if (left >= 0xF0 && left <= 0xFE) {
+                // apply command (NOT IMPLEMENTED)
+                wav_pointer++;
+            }  else if (left == 0xFF) {
                 // jump to $NN
                 if (right == 0) {
                     break;
@@ -298,6 +301,8 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
       delay=0;
       ptr_loop=filter_pointer;
       ins_loop=1;
+      unsigned char updated_type=0;
+      unsigned char real_tick=1;
       for (int tick=0;tick<256;tick++) {
         if (filter_pointer == 0) break;
         if (delay==0) {
@@ -325,9 +330,16 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
               sweep_amt=0;
             } else if (left & 0x80) {
               // set filter usage/resonance
+              if (!updated_type) {
+                filter_type->len=real_tick+1;
+                for (int i=0; i<real_tick; i++)
+                  filter_type->val[i]=0;
+              }
+              updated_type=1;
               curfiltype=(left>>4)&0x7;
               curres=(right>>4)&0xf;
               filter_pointer++;
+              continue;
             } else {
               // sweep pulse
               delay=left-1;
@@ -338,12 +350,15 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
             delay--;
         }
         curfilt += (int8_t)sweep_amt;
-        filter->len=tick+1;
-        filter->val[tick]=((unsigned short)curfilt)<<3;
-        filter_type->len=tick+1;
-        filter_type->val[tick]=curfiltype&15;
-        filter_res->len=tick+1;
-        filter_res->val[tick]=curres&15;
+        filter->len=real_tick+1;
+        filter->val[real_tick]=((unsigned short)curfilt)<<3;
+        if (updated_type) {
+          filter_type->len=real_tick+1;
+          filter_type->val[real_tick]=curfiltype&15;
+        }
+        filter_res->len=real_tick+1;
+        filter_res->val[real_tick]=curres&15;
+        real_tick++;
       }
       ins->name=reader.readString(16);
       ds.ins.push_back(ins);
@@ -399,6 +414,7 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
       for (int row=0; row<patLen; row++) {
         for (int ch=0; ch<chCount; ch++) {
           unsigned short pat_ind=order_ind[ch];
+          char pat_trans = pats_unrolled_trans[(pat_ind%4096)+(ch*4096)];
           //logD("%02x/%04x: %02x",ch,pat_ind%4096,pats_unrolled[(pat_ind%4096)+(ch*4096)]);
           getGT2PatPos(pattern_pos_start,pats_unrolled[(pat_ind%4096)+(ch*4096)],reader);
           unsigned char pat_total_rows=reader.readC();
@@ -436,6 +452,7 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
               order_ind[ch]++;
               pat_ind=order_ind[ch];
               pat_row[ch]=1;
+              pat_trans = pats_unrolled_trans[(pat_ind%4096)+(ch*4096)];
               getGT2PatPos(pattern_pos_start,pats_unrolled[(pat_ind%4096)+(ch*4096)],reader);
               pat_total_rows=reader.readC(); 
             }
@@ -456,7 +473,7 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
                   break;
                 }
                 short slide_amt = speedtable[cmddata];
-                slide_amt = (short)(((float)slide_amt)/1.05);
+                slide_amt = (short)(((float)slide_amt)*1.5);
                 if (slide_amt > 255) slide_amt = 255;
                 if (slide_amt < 0) slide_amt = 0;
                 dstrow[8]=cmd;
@@ -517,7 +534,7 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
             last_eff[ch]=cmddata;
 
             if (notenumber >= 0x60 && notenumber <= 0xBC) {
-              short note=notenumber-0x60;
+              short note=notenumber-0x60+pat_trans;
               if (!(row < 2 && pat == 0) && (cmd != 3)) {
                 prevrow2[0]=101; // rel (and set ADSR to $0F00)
                 prevrow2[2]=(last_ins[ch]+1)%insCount; // this fixes ADSR commands from not resetting
