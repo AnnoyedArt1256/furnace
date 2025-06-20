@@ -490,6 +490,16 @@ bool DivEngine::loadSNG(unsigned char* file, size_t len) {
                 dstrow[5]=cmddata;
                 break;
               }
+              case 0x7: { // set sustain and release
+                dstrow[4]=0x10;
+                dstrow[5]=cmddata>>4;
+                if (cmddata < 0x10) {
+                  dstrow[4]=0x21;
+                  dstrow[5]=0x00;
+                  dstrow[0] = 100;
+                }
+                break;
+              }
               case 0xE: { // set funk
                 if (cmddata == 0) break; // TODO: is this correct behaviour?
                 for (size_t n=0;n<chCount;n++) {
