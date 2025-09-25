@@ -22,11 +22,19 @@
 int VT2_hextoint(char n) {
   if (n >= 'A' && n <= 'F') return n-'A'+0x0a;
   if (n >= '0' && n <= '9') return n-'0';
+  return -1;
+}
+
+int VT2_hextoint_env(char n) {
+  if (n == '.') return 0;
+  if (n >= 'A' && n <= 'F') return n-'A'+0x0a;
+  if (n >= '0' && n <= '9') return n-'0';
   return 0;
 }
 
 int VT2_lettertoint(char n) {
-  if (n >= 'A' && n <= 'Z') return n-'Z';
+  if (n >= 'A' && n <= 'Z') return n-'A'+0x0a;
+  if (n >= '0' && n <= '9') return n-'0';
   return -1;
 }
 
@@ -81,11 +89,14 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
         if ((line.length() == 0) || (line.at(0) == '[')) break; 
     }
 
-    ds.subsong[0]->patLen=64;
+    size_t old_pos = reader.tell();
+
+    ds.subsong[0]->patLen=256;
     ds.subsong[0]->hz=50;
     ds.systemLen=chCount/3;
     for(int i=0; i<ds.systemLen; i++) {
       ds.system[i]=DIV_SYSTEM_AY8910;
+      ds.systemFlags[i].set("customClock",1750000);
     }
     for(int i=0; i<chCount; i++) {
       ds.subsong[0]->chanShow[i]=true;
@@ -114,6 +125,7 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
                             // A,B,C,D,E,F,G
     const int note2int[7] = {9,11,0,2,4,5,7};
 
+    std::vector<int> ins_comb;
     for (int pat=0; pat<max_pat; pat++) {
       String pat_num_str = std::to_string(pat);
       for (int tr=0;tr<2560;tr++) {
@@ -122,23 +134,43 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
             break;
       }
       DivPattern* chpats[DIV_MAX_CHANS];
+      int ins[DIV_MAX_CHANS];
+      int ord[DIV_MAX_CHANS];
       for (int ch=0; ch<chCount; ch++) {
         chpats[ch]=ds.subsong[0]->pat[ch].getPattern(pat,true);
+        ins[ch]=0;
+        ord[ch]=0;
       }
-      for (int row=0; row<64; row++) {
+      for (int row=0; row<256; row++) {
         String line = reader.readStringLine();
 
         if (line.length() == 0 && row != 0) {
-          short* dstrow=chpats[3]->data[row-1];
+          short* dstrow=chpats[0]->data[row-1];
+          dstrow[10]=0x0D;
+          dstrow[11]=0x00;
           break;
         }
 
         for (int ch=0; ch<chCount; ch++) {
           short* dstrow=chpats[ch]->data[row];
 
+          if (ch == 2) {
+            String env_pitch_str = line.substr(0,4);
+            if (env_pitch_str != "....") {
+              unsigned char pitch_hi = (VT2_hextoint_env(env_pitch_str.at(0))<<4);
+              pitch_hi |= VT2_hextoint_env(env_pitch_str.at(1));
+              unsigned char pitch_lo = (VT2_hextoint_env(env_pitch_str.at(2))<<4);
+              pitch_lo |= VT2_hextoint_env(env_pitch_str.at(3));
+              dstrow[8]=0x23;
+              dstrow[9]=pitch_lo;
+              dstrow[10]=0x24;
+              dstrow[11]=pitch_hi;
+            }
+          }
+
           String chpat_line = line.substr(8+(ch*14),14-1);
           if (chpat_line.at(0) == 'R') {
-            dstrow[0]=102;
+            dstrow[0]=100;
           } else if (chpat_line.at(0) != '-') {
             char note_char = chpat_line.at(0);
             unsigned char sharp = chpat_line.at(1)=='#'?1:0;
@@ -150,16 +182,125 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
             }
           }
 
+          // effects
+          if (chpat_line.at(9) != '.') {
+            char effect = chpat_line.at(9);
+            switch (effect) {
+              case 'B': {
+                dstrow[4]=0x0F;
+                dstrow[5]=(VT2_hextoint_env(chpat_line.at(11))<<4)|VT2_hextoint(chpat_line.at(12));
+                break;
+              }
+            }
+          }
+
           // TODO: add ornaments
           if (chpat_line.at(7) != '.') dstrow[3]=VT2_hextoint(chpat_line.at(7));
+          if (chpat_line.at(6) != '.') {
+            int ord_num = VT2_lettertoint(chpat_line.at(6))-1;
+            if (ord_num > -1) ord[ch]=ord_num;           
+          }
           if (chpat_line.at(4) != '.') {
-            int ins_num = VT2_lettertoint(chpat_line.at(4));
-            if (ins_num > -1) dstrow[2]=ins_num;
+            int ins_num = VT2_lettertoint(chpat_line.at(4))-1;
+            if (ins_num > -1) {
+              int ins_ind = ins_num+(ord[ch]*32);
+              auto ins_find_result = std::find(ins_comb.begin(), ins_comb.end(), ins_ind);
+              if ((ins_find_result == ins_comb.end()) || (ins_comb.size() == 0)) {
+                ins_comb.push_back(ins_ind);
+                ins_ind=ins_comb.size()-1;
+              } else {
+                ins_ind=ins_find_result-ins_comb.begin();
+              }
+              dstrow[2]=ins[ch]=(ins_ind<<1)|(ins[ch]&1);
+            }
+          }
+          if (chpat_line.at(5) != '.') {
+            int env_val = VT2_hextoint(chpat_line.at(5));
+            if (env_val == 0) env_val = -1;
+            if (env_val > -1) {
+              if (env_val != 15) {
+                dstrow[6]=0x22;
+                dstrow[7]=env_val<<4;
+                dstrow[2]=ins[ch]=(ins[ch]&0xfe)|1;
+              } else {
+                dstrow[2]=ins[ch]=(ins[ch]&0xfe)|0;
+              }
+            }
           }
         }
       }
     }
 
+    int insCount = ins_comb.size();
+    // TODO: add ornaments
+    // instrument creation
+    ds.ins.reserve(insCount<<1);
+    for(int i=0; i<insCount<<1; i++) {
+      int ins_num = ins_comb[i>>1];
+      String samp_num_str = std::to_string((ins_num&31)+1);
+      reader.seek(old_pos, SEEK_SET);
+      DivInstrument* ins=new DivInstrument;
+      ins->type=DIV_INS_AY;
+      ins->name="";
+      for (int tr=0;tr<3000;tr++) {
+        String line = reader.readStringLine();
+        if (line == ("[Sample" + samp_num_str + "]"))
+            break;
+      }
+      size_t samp_loop_pos = reader.tell();
+      DivInstrumentMacro *vol=&ins->std.volMacro;
+      DivInstrumentMacro *wave=&ins->std.waveMacro;
+      int vol_add = 0;
+      bool changed_vol_add = false;
+      bool loop = false;
+      for (int tick=0; tick<64; tick++) {
+        size_t cur_samp_pos = reader.tell();
+        String line = reader.readStringLine();
+        if (line.length() == 0 && tick != 0) {
+          if (loop && changed_vol_add) {
+            reader.seek(samp_loop_pos,SEEK_SET);
+            line = reader.readStringLine();
+            cur_samp_pos = samp_loop_pos;
+            wave->loop = 255; // remove loop
+            vol->loop = 255; // remove loop
+          } else break;
+        }
+        //logD("%02x: %s\n", i, line.c_str());
+        // volume macro
+        char vol_add_mode = line.at(16);
+        if (vol_add_mode == '+') {
+          changed_vol_add = true;
+          vol_add++;
+        } else if (vol_add_mode == '-') {
+          changed_vol_add = true;
+          vol_add--; 
+        }
+        char vol_val = VT2_hextoint(line.at(15)) + vol_add;
+        if (vol_val < 0) vol_val = 0;
+        else if (vol_val > 15) vol_val = 15;
+        // wave mode
+        unsigned char wave_val = 0;
+        if (line.at(0) == 'T') wave_val |= 1;
+        if (line.at(1) == 'N') wave_val |= 2;
+        if ((line.at(2) == 'E') && (i&1)) wave_val |= 4;
+
+        vol->val[tick] = vol_val;
+        wave->val[tick] = wave_val;
+        wave->len = tick+1;
+        vol->len = tick+1;
+        if (line.length() >= 19) {
+          // check for loop marker
+          if (line.at(18) == 'L') {
+            samp_loop_pos = cur_samp_pos; 
+            wave->loop = tick; // set loop to loop marker pos
+            vol->loop = tick; // set loop to loop marker pos
+            loop = true;
+          }
+        }
+      }
+      ds.ins.push_back(ins);
+    }
+    ds.insLen=ds.ins.size();
 
     // find subsongs
     ds.findSubSongs(chCount);
