@@ -250,29 +250,32 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
       size_t samp_loop_pos = reader.tell();
       DivInstrumentMacro *vol=&ins->std.volMacro;
       DivInstrumentMacro *wave=&ins->std.waveMacro;
+      DivInstrumentMacro *pitch=&ins->std.pitchMacro;
       int vol_add = 0;
-      bool changed_vol_add = false;
+      int pitch_add = 0;
+      bool changed_delta = false;
       bool loop = false;
       for (int tick=0; tick<64; tick++) {
         size_t cur_samp_pos = reader.tell();
         String line = reader.readStringLine();
         if (line.length() == 0 && tick != 0) {
-          if (loop && changed_vol_add) {
+          if (loop && changed_delta) {
             reader.seek(samp_loop_pos,SEEK_SET);
             line = reader.readStringLine();
             cur_samp_pos = samp_loop_pos;
             wave->loop = 255; // remove loop
             vol->loop = 255; // remove loop
+            pitch->loop = 255; // remove loop
           } else break;
         }
         //logD("%02x: %s\n", i, line.c_str());
         // volume macro
         char vol_add_mode = line.at(16);
         if (vol_add_mode == '+') {
-          changed_vol_add = true;
+          changed_delta = true;
           vol_add++;
         } else if (vol_add_mode == '-') {
-          changed_vol_add = true;
+          changed_delta = true;
           vol_add--; 
         }
         char vol_val = VT2_hextoint(line.at(15)) + vol_add;
@@ -284,16 +287,29 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
         if (line.at(1) == 'N') wave_val |= 2;
         if ((line.at(2) == 'E') && (i&1)) wave_val |= 4;
 
+        int pitch_val = VT2_hextoint(line.at(7));
+        pitch_val |= VT2_hextoint(line.at(6))<<4;
+        pitch_val |= VT2_hextoint(line.at(5))<<8;
+        if (line.at(4) == '-') pitch_val = -pitch_val;
+        if (line.at(8) == '^') {
+          pitch->val[tick] = -(pitch_add);
+          pitch_add += pitch_val;
+        } else {
+          pitch->val[tick] = -(pitch_add + pitch_val);
+        }
+
         vol->val[tick] = vol_val;
         wave->val[tick] = wave_val;
         wave->len = tick+1;
         vol->len = tick+1;
+        pitch->len = tick+1;
         if (line.length() >= 19) {
           // check for loop marker
           if (line.at(18) == 'L') {
             samp_loop_pos = cur_samp_pos; 
             wave->loop = tick; // set loop to loop marker pos
             vol->loop = tick; // set loop to loop marker pos
+            pitch->loop = tick; // set loop to loop marker pos
             loop = true;
           }
         }
