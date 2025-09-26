@@ -332,10 +332,11 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
           // loop marker
           orn_ind_pos=p+1;
           arp->loop=orn_tick;
-        } else if (orn_char == ',' || p == (line.length()-1)) {
+        } else if ((orn_char == ',') || (p == (line.length()-1))) {
           // delimiter
           unsigned int val = atoi(line.substr(orn_ind_pos,p-orn_ind_pos).c_str());
-          arp->val[orn_tick+1]=val;
+          if (p == (line.length()-1)) val = atoi(line.substr(orn_ind_pos,line.length()-orn_ind_pos).c_str());
+          arp->val[orn_tick]=val;
           arp->len=orn_tick+1;
           orn_tick++;
           orn_ind_pos=p+1;
