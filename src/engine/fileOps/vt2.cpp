@@ -238,6 +238,7 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
     for(int i=0; i<insCount<<1; i++) {
       int ins_num = ins_comb[i>>1];
       String samp_num_str = std::to_string((ins_num&31)+1);
+      String ord_num_str = std::to_string(((ins_num>>5)&31)+1);
       reader.seek(old_pos, SEEK_SET);
       DivInstrument* ins=new DivInstrument;
       ins->type=DIV_INS_AY;
@@ -312,6 +313,32 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
             pitch->loop = tick; // set loop to loop marker pos
             loop = true;
           }
+        }
+      }
+      // ornaments (basically arp macros)
+      reader.seek(old_pos, SEEK_SET);
+      for (int tr=0;tr<3000;tr++) {
+        String line = reader.readStringLine();
+        if (line == ("[Ornament" + ord_num_str + "]"))
+            break;
+      }
+      String line = reader.readStringLine();
+      DivInstrumentMacro *arp=&ins->std.arpMacro;
+      int orn_ind_pos = 0;
+      int orn_tick = 0;
+      for (int p=0; p<(int)line.length(); p++) {
+        char orn_char = line.at(p);
+        if (orn_char == 'L') {
+          // loop marker
+          orn_ind_pos=p+1;
+          arp->loop=orn_tick;
+        } else if (orn_char == ',' || p == (line.length()-1)) {
+          // delimiter
+          unsigned int val = atoi(line.substr(orn_ind_pos,p-orn_ind_pos).c_str());
+          arp->val[orn_tick+1]=val;
+          arp->len=orn_tick+1;
+          orn_tick++;
+          orn_ind_pos=p+1;
         }
       }
       ds.ins.push_back(ins);
