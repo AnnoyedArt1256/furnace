@@ -103,7 +103,7 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
       ds.subsong[0]->chanShowChanOsc[i]=true;
       ds.subsong[0]->chanName[i]=fmt::sprintf("Channel %d",i+1);
       ds.subsong[0]->chanShortName[i]=fmt::sprintf("C%d",i+1);
-      ds.subsong[0]->pat[i].effectCols=4;
+      ds.subsong[0]->pat[i].effectCols=(i%3)==2?5:4;
     }
 
     int max_pat=0;
@@ -119,27 +119,32 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
 
     for (int i=0; i<ordCount; i++) {
       for (int j=0; j<chCount; j++) {
-        ds.subsong[0]->orders.ord[j][i]=pat_inds[i];
+        ds.subsong[0]->orders.ord[j][i]=i;//pat_inds[i];
       }
     }
                             // A,B,C,D,E,F,G
     const int note2int[7] = {9,11,0,2,4,5,7};
 
+    DivPattern* chpats[DIV_MAX_CHANS];
+    int ins[DIV_MAX_CHANS];
+    int ord[DIV_MAX_CHANS];
+    int has_macro_disable[DIV_MAX_CHANS];
+    for (int ch=0; ch<chCount; ch++) {
+      ins[ch]=0;
+      ord[ch]=0;
+      has_macro_disable[ch]=0;
+    }
     std::vector<int> ins_comb;
-    for (int pat=0; pat<max_pat; pat++) {
-      String pat_num_str = std::to_string(pat);
+    for (int pat=0; pat<ordCount; pat++) {
+      reader.seek(old_pos, SEEK_SET);
+      String pat_num_str = std::to_string(pat_inds[pat]);
       for (int tr=0;tr<2560;tr++) {
         String line = reader.readStringLine();
         if (line == ("[Pattern" + pat_num_str + "]"))
             break;
       }
-      DivPattern* chpats[DIV_MAX_CHANS];
-      int ins[DIV_MAX_CHANS];
-      int ord[DIV_MAX_CHANS];
       for (int ch=0; ch<chCount; ch++) {
         chpats[ch]=ds.subsong[0]->pat[ch].getPattern(pat,true);
-        ins[ch]=0;
-        ord[ch]=0;
       }
       for (int row=0; row<256; row++) {
         String line = reader.readStringLine();
@@ -161,10 +166,16 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
               pitch_hi |= VT2_hextoint_env(env_pitch_str.at(1));
               unsigned char pitch_lo = (VT2_hextoint_env(env_pitch_str.at(2))<<4);
               pitch_lo |= VT2_hextoint_env(env_pitch_str.at(3));
-              dstrow[8]=0x23;
-              dstrow[9]=pitch_lo;
-              dstrow[10]=0x24;
-              dstrow[11]=pitch_hi;
+              dstrow[10]=0x23;
+              dstrow[11]=pitch_lo;
+              dstrow[12]=0x24;
+              dstrow[13]=pitch_hi;
+            }
+          } else if (ch == 0) {
+            String env_pitch_str = line.substr(0,4);
+            if (env_pitch_str != "....") {
+              dstrow[10]=0x25;
+              dstrow[11]=0x00;
             }
           }
 
@@ -176,9 +187,21 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
             unsigned char sharp = chpat_line.at(1)=='#'?1:0;
             char oct = chpat_line.at(2);
             if (note_char >= 'A' && note_char <= 'G') {
+              char effect = chpat_line.at(9);
               char note = note2int[note_char-'A']+sharp+(oct-'0')*12;
               dstrow[0]=((note+11)%12)+1;
               dstrow[1]=(note-1)/12;
+              if (effect == '.') {
+                dstrow[4]=0x01;
+                dstrow[5]=0x00;
+              } else if (!(effect >= '1' && effect <= '3')) {
+                dstrow[8]=0x01;
+                dstrow[9]=0x00;
+              } else {
+                dstrow[8]=0xF5;
+                dstrow[9]=0x01;
+                has_macro_disable[ch]=2;
+              }
             }
           }
 
@@ -186,11 +209,38 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
           if (chpat_line.at(9) != '.') {
             char effect = chpat_line.at(9);
             switch (effect) {
-              case 'B': {
-                dstrow[4]=0x0F;
-                dstrow[5]=(VT2_hextoint_env(chpat_line.at(11))<<4)|VT2_hextoint(chpat_line.at(12));
+              case '1': {
+                dstrow[4]=0x02;
                 break;
               }
+              case '2': {
+                dstrow[4]=0x01;
+                break;
+              }
+              case '3': {
+                dstrow[4]=0x03;
+                break;
+              }
+              case '9': {
+                dstrow[4]=0x26;
+                break;
+              }
+              case 'A': {
+                dstrow[4]=0x25;
+                break;
+              }
+              case 'B': {
+                dstrow[4]=0x0F;
+                break;
+              }
+            }
+            unsigned char effect_val=(VT2_hextoint_env(chpat_line.at(11))<<4)|VT2_hextoint(chpat_line.at(12));;
+            if (chpat_line.at(10) != '.' && effect != 'B') {
+              unsigned char delay_val=VT2_hextoint_env(chpat_line.at(10));
+              if (delay_val == 0) dstrow[5] = 0;
+              else dstrow[5] = effect_val>>(delay_val-1);
+            } else {
+              dstrow[5]=effect_val;
             }
           }
 
@@ -224,6 +274,18 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
                 dstrow[2]=ins[ch]=(ins[ch]&0xfe)|1;
               } else {
                 dstrow[2]=ins[ch]=(ins[ch]&0xfe)|0;
+              }
+            }
+          }
+
+          if (has_macro_disable[ch] > 0) {
+            if ((--has_macro_disable[ch]) == 0) {
+              for (int col=4;col<12;col+=2) {
+                if (dstrow[col] != -1) {
+                  dstrow[col]=0xF6;
+                  dstrow[col+1]=0x01;
+                  break;
+                }
               }
             }
           }
