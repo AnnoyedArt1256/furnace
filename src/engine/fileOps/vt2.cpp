@@ -131,7 +131,7 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
     int has_macro_disable[DIV_MAX_CHANS];
     for (int ch=0; ch<chCount; ch++) {
       ins[ch]=0;
-      ord[ch]=0;
+      ord[ch]=32;
       has_macro_disable[ch]=0;
     }
     std::vector<int> ins_comb;
@@ -378,30 +378,32 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
         }
       }
       // ornaments (basically arp macros)
-      reader.seek(old_pos, SEEK_SET);
-      for (int tr=0;tr<3000;tr++) {
+      if ((ins_num>>5) != 32) {
+        reader.seek(old_pos, SEEK_SET);
+        for (int tr=0;tr<3000;tr++) {
+          String line = reader.readStringLine();
+          if (line == ("[Ornament" + ord_num_str + "]"))
+              break;
+        }
         String line = reader.readStringLine();
-        if (line == ("[Ornament" + ord_num_str + "]"))
-            break;
-      }
-      String line = reader.readStringLine();
-      DivInstrumentMacro *arp=&ins->std.arpMacro;
-      int orn_ind_pos = 0;
-      int orn_tick = 0;
-      for (int p=0; p<(int)line.length(); p++) {
-        char orn_char = line.at(p);
-        if (orn_char == 'L') {
-          // loop marker
-          orn_ind_pos=p+1;
-          arp->loop=orn_tick;
-        } else if ((orn_char == ',') || (p == (line.length()-1))) {
-          // delimiter
-          unsigned int val = atoi(line.substr(orn_ind_pos,p-orn_ind_pos).c_str());
-          if (p == (line.length()-1)) val = atoi(line.substr(orn_ind_pos,line.length()-orn_ind_pos).c_str());
-          arp->val[orn_tick]=val;
-          arp->len=orn_tick+1;
-          orn_tick++;
-          orn_ind_pos=p+1;
+        DivInstrumentMacro *arp=&ins->std.arpMacro;
+        int orn_ind_pos = 0;
+        int orn_tick = 0;
+        for (int p=0; p<(int)line.length(); p++) {
+          char orn_char = line.at(p);
+          if (orn_char == 'L') {
+            // loop marker
+            orn_ind_pos=p+1;
+            arp->loop=orn_tick;
+          } else if ((orn_char == ',') || (p == (line.length()-1))) {
+            // delimiter
+            unsigned int val = atoi(line.substr(orn_ind_pos,p-orn_ind_pos).c_str());
+            if (p == (line.length()-1)) val = atoi(line.substr(orn_ind_pos,line.length()-orn_ind_pos).c_str());
+            arp->val[orn_tick]=val;
+            arp->len=orn_tick+1;
+            orn_tick++;
+            orn_ind_pos=p+1;
+          }
         }
       }
       ds.ins.push_back(ins);
