@@ -127,10 +127,12 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
 
     DivPattern* chpats[DIV_MAX_CHANS];
     int ins[DIV_MAX_CHANS];
+    int real_ins[DIV_MAX_CHANS];
     int ord[DIV_MAX_CHANS];
     int has_macro_disable[DIV_MAX_CHANS];
     for (int ch=0; ch<chCount; ch++) {
       ins[ch]=0;
+      real_ins[ch]=0;
       ord[ch]=32;
       has_macro_disable[ch]=0;
     }
@@ -248,12 +250,24 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
           if (chpat_line.at(7) != '.') dstrow[3]=VT2_hextoint(chpat_line.at(7));
           if (chpat_line.at(6) != '.') {
             int ord_num = VT2_lettertoint(chpat_line.at(6))-1;
-            if (ord_num > -1) ord[ch]=ord_num;           
+            if (ord_num > -1) ord[ch]=ord_num;
+            if (chpat_line.at(4) == '.') {
+              int ins_ind = real_ins[ch]+(ord[ch]*32);
+              auto ins_find_result = std::find(ins_comb.begin(), ins_comb.end(), ins_ind);
+              if ((ins_find_result == ins_comb.end()) || (ins_comb.size() == 0)) {
+                ins_comb.push_back(ins_ind);
+                ins_ind=ins_comb.size()-1;
+              } else {
+                ins_ind=ins_find_result-ins_comb.begin();
+              }
+              dstrow[2]=ins[ch]=(ins_ind<<1)|(ins[ch]&1);
+            }
           }
           if (chpat_line.at(4) != '.') {
             int ins_num = VT2_lettertoint(chpat_line.at(4))-1;
             if (ins_num > -1) {
               int ins_ind = ins_num+(ord[ch]*32);
+              real_ins[ch]=ins_num;
               auto ins_find_result = std::find(ins_comb.begin(), ins_comb.end(), ins_ind);
               if ((ins_find_result == ins_comb.end()) || (ins_comb.size() == 0)) {
                 ins_comb.push_back(ins_ind);
@@ -271,9 +285,9 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
               if (env_val != 15) {
                 dstrow[6]=0x22;
                 dstrow[7]=env_val<<4;
-                dstrow[2]=ins[ch]=(ins[ch]&0xfe)|1;
+                dstrow[2]=ins[ch]=ins[ch]|1;
               } else {
-                dstrow[2]=ins[ch]=(ins[ch]&0xfe)|0;
+                dstrow[2]=ins[ch]=ins[ch]^(ins[ch]&1);
               }
             }
           }
@@ -281,7 +295,7 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
           if (has_macro_disable[ch] > 0) {
             if ((--has_macro_disable[ch]) == 0) {
               for (int col=4;col<12;col+=2) {
-                if (dstrow[col] != -1) {
+                if (dstrow[col] == -1) {
                   dstrow[col]=0xF6;
                   dstrow[col+1]=0x01;
                   break;
@@ -296,6 +310,7 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
     int insCount = ins_comb.size();
     // TODO: add ornaments
     // instrument creation
+    logD("%d %d\n",insCount,insCount<<1);
     ds.ins.reserve(insCount<<1);
     for(int i=0; i<insCount<<1; i++) {
       int ins_num = ins_comb[i>>1];
