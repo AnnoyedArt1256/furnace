@@ -245,39 +245,9 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
               dstrow[5]=effect_val;
             }
           }
+  
+          bool do_ins = false;
 
-          // TODO: add ornaments
-          if (chpat_line.at(7) != '.') dstrow[3]=VT2_hextoint(chpat_line.at(7));
-          if (chpat_line.at(6) != '.') {
-            int ord_num = VT2_lettertoint(chpat_line.at(6))-1;
-            if (ord_num > -1) ord[ch]=ord_num;
-            if (chpat_line.at(4) == '.') {
-              int ins_ind = real_ins[ch]+(ord[ch]*32);
-              auto ins_find_result = std::find(ins_comb.begin(), ins_comb.end(), ins_ind);
-              if ((ins_find_result == ins_comb.end()) || (ins_comb.size() == 0)) {
-                ins_comb.push_back(ins_ind);
-                ins_ind=ins_comb.size()-1;
-              } else {
-                ins_ind=ins_find_result-ins_comb.begin();
-              }
-              dstrow[2]=ins[ch]=(ins_ind<<1)|(ins[ch]&1);
-            }
-          }
-          if (chpat_line.at(4) != '.') {
-            int ins_num = VT2_lettertoint(chpat_line.at(4))-1;
-            if (ins_num > -1) {
-              int ins_ind = ins_num+(ord[ch]*32);
-              real_ins[ch]=ins_num;
-              auto ins_find_result = std::find(ins_comb.begin(), ins_comb.end(), ins_ind);
-              if ((ins_find_result == ins_comb.end()) || (ins_comb.size() == 0)) {
-                ins_comb.push_back(ins_ind);
-                ins_ind=ins_comb.size()-1;
-              } else {
-                ins_ind=ins_find_result-ins_comb.begin();
-              }
-              dstrow[2]=ins[ch]=(ins_ind<<1)|(ins[ch]&1);
-            }
-          }
           if (chpat_line.at(5) != '.') {
             int env_val = VT2_hextoint(chpat_line.at(5));
             if (env_val == 0) env_val = -1;
@@ -289,7 +259,37 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
               } else {
                 dstrow[2]=ins[ch]=ins[ch]^(ins[ch]&1);
               }
+              ord[ch] = 32; // huh?
+              do_ins = true;
             }
+          }
+
+          if (chpat_line.at(7) != '.') dstrow[3]=VT2_hextoint(chpat_line.at(7));
+          if (chpat_line.at(6) != '.') {
+            int ord_num = VT2_lettertoint(chpat_line.at(6))-1;
+            if (ord_num > -1) {
+              ord[ch]=ord_num;             
+              do_ins = true;
+            }
+          }
+          if (chpat_line.at(4) != '.') {
+            int ins_num = VT2_lettertoint(chpat_line.at(4))-1;
+            if (ins_num > -1) {
+              real_ins[ch]=ins_num;
+              do_ins=true;
+            }
+          }
+
+          if (do_ins) {
+            int ins_ind = real_ins[ch]+(ord[ch]*32);
+            auto ins_find_result = std::find(ins_comb.begin(), ins_comb.end(), ins_ind);
+            if ((ins_find_result == ins_comb.end()) || (ins_comb.size() == 0)) {
+              ins_comb.push_back(ins_ind);
+              ins_ind=ins_comb.size()-1;
+            } else {
+              ins_ind=ins_find_result-ins_comb.begin();
+            }
+            dstrow[2]=ins[ch]=(ins_ind<<1)|(ins[ch]&1);
           }
 
           if (has_macro_disable[ch] > 0) {
