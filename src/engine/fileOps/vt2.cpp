@@ -19,6 +19,25 @@
 
 #include "fileOpsCommon.h"
 
+String VT2_readstrline(SafeReader *reader) {
+  // account for CRLF (mostly windows) newlines
+  String ret;
+  unsigned char c;
+  if ((*reader).isEOF()) throw EndOfFileException(reader, (*reader).tell());
+
+  while (!((*reader).isEOF()) && (c=(*reader).readC())!=0) {
+    if (c=='\n') {
+      break;
+    } else if (c=='\r') {
+      unsigned char c2 = (*reader).readC();
+      if (c2!='\n') (*reader).seek(-1,SEEK_CUR);
+      break;
+    }
+    ret.push_back(c);
+  }
+  return ret;
+}
+
 int VT2_hextoint(char n) {
   if (n >= 'A' && n <= 'F') return n-'A'+0x0a;
   if (n >= '0' && n <= '9') return n-'0';
@@ -59,10 +78,10 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
     ds.copyright="";
 
     reader.seek(0, SEEK_SET);
-    reader.readStringLine(); // skip [Module]
+    VT2_readstrline(&reader); // skip [Module]
 
     while (true) {
-        String line = reader.readStringLine();
+        String line = VT2_readstrline(&reader);
         int pos = line.find_first_of("=");
         String headerType = line.substr(0, pos);
         String headerVal = line.substr(pos + 1);
@@ -141,7 +160,7 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
       reader.seek(old_pos, SEEK_SET);
       String pat_num_str = std::to_string(pat_inds[pat]);
       for (int tr=0;tr<2560;tr++) {
-        String line = reader.readStringLine();
+        String line = VT2_readstrline(&reader);
         if (line == ("[Pattern" + pat_num_str + "]"))
             break;
       }
@@ -149,7 +168,7 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
         chpats[ch]=ds.subsong[0]->pat[ch].getPattern(pat,true);
       }
       for (int row=0; row<256; row++) {
-        String line = reader.readStringLine();
+        String line = VT2_readstrline(&reader);
 
         if (line.length() == 0 && row != 0) {
           short* dstrow=chpats[0]->data[row-1];
@@ -321,7 +340,7 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
       ins->type=DIV_INS_AY;
       ins->name="";
       for (int tr=0;tr<3000;tr++) {
-        String line = reader.readStringLine();
+        String line = VT2_readstrline(&reader);
         if (line == ("[Sample" + samp_num_str + "]"))
             break;
       }
@@ -335,11 +354,11 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
       bool loop = false;
       for (int tick=0; tick<64; tick++) {
         size_t cur_samp_pos = reader.tell();
-        String line = reader.readStringLine();
+        String line = VT2_readstrline(&reader);
         if (line.length() == 0 && tick != 0) {
           if (loop && changed_delta) {
             reader.seek(samp_loop_pos,SEEK_SET);
-            line = reader.readStringLine();
+            line = VT2_readstrline(&reader);
             cur_samp_pos = samp_loop_pos;
             wave->loop = 255; // remove loop
             vol->loop = 255; // remove loop
@@ -396,11 +415,11 @@ bool DivEngine::loadVT2(unsigned char* file, size_t len) {
       if ((ins_num>>5) != 32) {
         reader.seek(old_pos, SEEK_SET);
         for (int tr=0;tr<3000;tr++) {
-          String line = reader.readStringLine();
+          String line = VT2_readstrline(&reader);
           if (line == ("[Ornament" + ord_num_str + "]"))
               break;
         }
-        String line = reader.readStringLine();
+        String line = VT2_readstrline(&reader);
         DivInstrumentMacro *arp=&ins->std.arpMacro;
         int orn_ind_pos = 0;
         int orn_tick = 0;
