@@ -142,4 +142,15 @@ void DivEngine::registerROMExports() {
     },
     false, DIV_REQPOL_ANY
   );
+
+  romExportDefs[DIV_ROM_GBA]=new DivROMExportDef(
+    "non-software mixed GBA", "AArt1256",
+    "GBA export with no software mixing\n"
+    "dfjhdajfkdhfskjfdkjadfhdf THIS IS A PLACEHOLDR sdkjfsdklfjdsf",
+    "Binary files", NULL,
+    {
+      DIV_SYSTEM_GBA_DMA
+    },
+    false, DIV_REQPOL_ANY
+  );
 }

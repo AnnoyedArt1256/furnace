@@ -160,6 +160,8 @@ void DivPlatformGBADMA::tick(bool sysTick) {
     }
     if (chan[i].std.phaseReset.had && chan[i].std.phaseReset.val==1) {
       chan[i].audPos=0;
+      if (dumpWrites) addWrite(0xfffe0000+(i<<8),sampleOff[chan[i].sample]);
+      if (dumpWrites) addWrite(0xffff0000+(i<<8),chan[i].sample);
     }
     if (chan[i].freqChanged || chan[i].keyOn || chan[i].keyOff) {
       double off=1.0;
@@ -180,6 +182,9 @@ void DivPlatformGBADMA::tick(bool sysTick) {
         chan[i].freq=chan[i].freq&~1024;
         if (chan[i].freq>65536*1024) chan[i].freq=65536*1024;
       }
+
+      if (dumpWrites) addWrite(0xffff0001+(i<<8),chan[i].freq);
+
       if (chan[i].keyOn) {
         if (!chan[i].std.vol.had) {
           chan[i].envVol=2;
@@ -191,6 +196,7 @@ void DivPlatformGBADMA::tick(bool sysTick) {
       }
       chan[i].freqChanged=false;
     }
+    if (dumpWrites) addWrite(0xfffe0001,(chan[i].vol*chan[i].envVol/2)<<1);
   }
 }
 
@@ -212,6 +218,8 @@ int DivPlatformGBADMA::dispatch(DivCommand c) {
       } else {
         if (c.value!=DIV_NOTE_NULL) {
           chan[c.chan].sample=ins->amiga.getSample(c.value);
+          if (dumpWrites) addWrite(0xfffe0000+(c.chan<<8),sampleOff[chan[c.chan].sample]);
+          if (dumpWrites) addWrite(0xffff0000+(c.chan<<8),chan[c.chan].sample);
           c.value=ins->amiga.getFreq(c.value);
         }
         chan[c.chan].useWave=false;
@@ -221,11 +229,14 @@ int DivPlatformGBADMA::dispatch(DivCommand c) {
       }
       if (chan[c.chan].useWave || chan[c.chan].sample<0 || chan[c.chan].sample>=parent->song.sampleLen) {
         chan[c.chan].sample=-1;
+        if (dumpWrites) addWrite(0xffff0002+(c.chan<<8),0);
       }
       if (chan[c.chan].setPos) {
         chan[c.chan].setPos=false;
       } else {
         chan[c.chan].audPos=0;
+        if (dumpWrites) addWrite(0xfffe0000+(c.chan<<8),sampleOff[chan[c.chan].sample]);
+        if (dumpWrites) addWrite(0xffff0000+(c.chan<<8),chan[c.chan].sample);
       }
       chan[c.chan].audSub=0;
       chan[c.chan].audDat=0;
@@ -250,6 +261,7 @@ int DivPlatformGBADMA::dispatch(DivCommand c) {
       chan[c.chan].sample=-1;
       chan[c.chan].active=false;
       chan[c.chan].keyOff=true;
+      if (dumpWrites) addWrite(0xffff0002+(c.chan<<8),0);
       chan[c.chan].macroInit(NULL);
       break;
     case DIV_CMD_NOTE_OFF_ENV:
@@ -329,6 +341,7 @@ int DivPlatformGBADMA::dispatch(DivCommand c) {
       if (chan[c.chan].useWave) break;
       chan[c.chan].audPos=c.value;
       chan[c.chan].setPos=true;
+      if (dumpWrites) addWrite(0xffff0005+(c.chan<<8),c.value);
       break;
     case DIV_CMD_GET_VOLMAX:
       return 2;
