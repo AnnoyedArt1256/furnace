@@ -134,9 +134,9 @@ void DivExportGBA::run() {
         //logAppendf("GB APU: found %d messages",writes.size());
         for (DivRegWrite& write: writes) {
           if (write.addr == 0x14 || write.addr == 0x19 || write.addr == 0x23) {
-            w->writeC(write.addr & 0x3F);
-            w->writeC(write.val & 0xFF);
-            has_reg_dump = 1;
+            //w->writeC(write.addr & 0x3F);
+            //w->writeC(write.val & 0xFF);
+            //has_reg_dump = 1;
           }
         }
         for (DivRegWrite& write: writes) {
@@ -164,6 +164,7 @@ void DivExportGBA::run() {
       std::vector<DivRegWrite>& writes_gba=e->disCont[GBA].dispatch->getRegisterWrites();
       if (writes_gba.size() > 0) {
         //has_reg_dump = 1;
+        /*
         for (DivRegWrite& write: writes_gba) {
           //logAppendf("GBA PCM: %08x %02x", write.addr, write.val);
           int ch = (write.addr>>8)&1;
@@ -209,6 +210,7 @@ void DivExportGBA::run() {
             default: break;
           }
         }
+        */
         writes_gba.clear();
       }
 
