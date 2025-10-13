@@ -106,7 +106,7 @@ void DivExportGBA::run() {
     progress[0].amount=0.15f;
 
     int wait_dur = 0;
-    w->writeI(e->disCont[GBA].dispatch->getSampleMemUsage(0));
+    w->writeI(e->disCont[GBA].dispatch->getSampleMemUsage(0)+0x10);
     w->writeI(0); // 4
     w->writeI(0); // 8
     w->writeI(0); // C
@@ -163,8 +163,7 @@ void DivExportGBA::run() {
 
       std::vector<DivRegWrite>& writes_gba=e->disCont[GBA].dispatch->getRegisterWrites();
       if (writes_gba.size() > 0) {
-        //has_reg_dump = 1;
-        /*
+        has_reg_dump = 1;
         for (DivRegWrite& write: writes_gba) {
           //logAppendf("GBA PCM: %08x %02x", write.addr, write.val);
           int ch = (write.addr>>8)&1;
@@ -177,14 +176,14 @@ void DivExportGBA::run() {
             case 0xfffe0001: { // set sample vol
                 if (val != sample_vol[ch]) {
                     w->writeC(0x40|((2<<1)|ch));
-                    w->writeS(val);
+                    w->writeC(val);
                 }
                 sample_vol[ch] = val;
                 break;
             }
             case 0xffff0000: { // play sample
                 w->writeC(0x40|((0<<1)|ch));
-                w->writeS(sample_off[ch]);
+                w->writeI(sample_off[ch]);
                 break;
             }
             case 0xffff0001: {
@@ -195,13 +194,14 @@ void DivExportGBA::run() {
                 if (val<65536) { prescaler = 0; freq_div = 1; } 
                 else if (val<65536*64) { prescaler = 1; freq_div = 64; }
                 else if (val<65536*256) { prescaler = 2; freq_div = 256; }
+                //int freq_master = (16777216>>6)*freq_div;
+                w->writeS(0x10000-(val/freq_div));                
                 w->writeS(0xfffc|prescaler);
-                w->writeS(0xffff-(((1<<24)/freq_div)/val));                
                 break;
             }
             case 0xffff0002: {
-                w->writeC(0x40|((0<<1)|ch));
-                w->writeS(0xff);
+                //w->writeC(0x40|((0<<1)|ch));
+                //w->writeS(0xff);
                 break;
             }
             case 0xffff0005: {
@@ -210,7 +210,6 @@ void DivExportGBA::run() {
             default: break;
           }
         }
-        */
         writes_gba.clear();
       }
 

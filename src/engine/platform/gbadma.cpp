@@ -196,7 +196,7 @@ void DivPlatformGBADMA::tick(bool sysTick) {
       }
       chan[i].freqChanged=false;
     }
-    if (dumpWrites) addWrite(0xfffe0001,(chan[i].vol*chan[i].envVol/2)<<1);
+    if (dumpWrites) addWrite(0xfffe0001+(i<<8),(chan[i].vol*chan[i].envVol/2)<<1);
   }
 }
 
