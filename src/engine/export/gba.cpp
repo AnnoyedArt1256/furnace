@@ -114,6 +114,7 @@ void DivExportGBA::run() {
              e->disCont[GBA].dispatch->getSampleMemUsage(0));
 
     int sample_off[2];
+    int sample_end[2];
     int has_reg_dump = 0;
     unsigned int sample_vol[2] = {0,0};
     uint8_t regs[0x40];
@@ -169,6 +170,10 @@ void DivExportGBA::run() {
           int ch = (write.addr>>8)&1;
           unsigned int val = write.val;
           switch (write.addr & 0xffff00ff) {
+            case 0xfffd0000: { // get sample end
+                sample_end[ch] = val;
+                break;
+            }
             case 0xfffe0000: { // get sample off
                 sample_off[ch] = val;
                 break;
@@ -183,6 +188,7 @@ void DivExportGBA::run() {
             }
             case 0xffff0000: { // play sample
                 w->writeC(0x40|((0<<1)|ch));
+                w->writeI(sample_end[ch]);
                 w->writeI(sample_off[ch]);
                 break;
             }

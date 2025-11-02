@@ -161,6 +161,14 @@ void DivPlatformGBADMA::tick(bool sysTick) {
     if (chan[i].std.phaseReset.had && chan[i].std.phaseReset.val==1) {
       chan[i].audPos=0;
       if (dumpWrites) addWrite(0xfffe0000+(i<<8),sampleOff[chan[i].sample]);
+      if (dumpWrites) {
+        //if (i == (parent->song.sampleLen-1)) {
+        //  DivSample* s=parent->getSample(chan[i].sample);
+        //  addWrite(0xfffd0000+(i<<8),sampleOff[chan[i].sample]+s->samples);
+        //} else {
+          addWrite(0xfffd0000+(i<<8),sampleOff[chan[i].sample+1]);
+        //}
+      }
       if (dumpWrites) addWrite(0xffff0000+(i<<8),chan[i].sample);
     }
     if (chan[i].freqChanged || chan[i].keyOn || chan[i].keyOff) {
@@ -219,6 +227,14 @@ int DivPlatformGBADMA::dispatch(DivCommand c) {
         if (c.value!=DIV_NOTE_NULL) {
           chan[c.chan].sample=ins->amiga.getSample(c.value);
           if (dumpWrites) addWrite(0xfffe0000+(c.chan<<8),sampleOff[chan[c.chan].sample]);
+          if (dumpWrites) {
+            //if (c.chan == (parent->song.sampleLen-1)) {
+            //  DivSample* s=parent->getSample(chan[c.chan].sample);
+            //  addWrite(0xfffd0000+(c.chan<<8),sampleOff[chan[c.chan].sample]+s->samples);
+            //} else {
+              addWrite(0xfffd0000+(c.chan<<8),sampleOff[chan[c.chan].sample+1]);
+            //}
+          }
           if (dumpWrites) addWrite(0xffff0000+(c.chan<<8),chan[c.chan].sample);
           c.value=ins->amiga.getFreq(c.value);
         }
@@ -236,6 +252,14 @@ int DivPlatformGBADMA::dispatch(DivCommand c) {
       } else {
         chan[c.chan].audPos=0;
         if (dumpWrites) addWrite(0xfffe0000+(c.chan<<8),sampleOff[chan[c.chan].sample]);
+        if (dumpWrites) {
+          //if (c.chan == (parent->song.sampleLen-1)) {
+          //    DivSample* s=parent->getSample(chan[c.chan].sample);
+          //    addWrite(0xfffd0000+(c.chan<<8),sampleOff[chan[c.chan].sample]+s->samples);
+          //} else {
+            addWrite(0xfffd0000+(c.chan<<8),sampleOff[chan[c.chan].sample+1]);
+          //}
+        }
         if (dumpWrites) addWrite(0xffff0000+(c.chan<<8),chan[c.chan].sample);
       }
       chan[c.chan].audSub=0;
@@ -504,6 +528,7 @@ void DivPlatformGBADMA::renderSamples(int sysID) {
     // pad to multiple of 16 bytes
     memPos=(memPos+15)&~15;
   }
+  sampleOff[parent->song.sampleLen]=memPos; // sorry :P
   sampleMemLen=memPos;
   romMemCompo.used=sampleMemLen;
 }
