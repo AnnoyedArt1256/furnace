@@ -826,6 +826,7 @@ src/engine/export/zsm.cpp
 src/engine/export/ipod.cpp
 src/engine/export/grub.cpp
 src/engine/export/gba.cpp
+src/engine/export/tia_simple.cpp
 
 src/engine/effect/abstract.cpp
 src/engine/effect/dummy.cpp

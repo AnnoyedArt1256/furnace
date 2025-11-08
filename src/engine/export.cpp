@@ -26,6 +26,7 @@
 #include "export/ipod.h"
 #include "export/grub.h"
 #include "export/gba.h"
+#include "export/tia_simple.h"
 
 DivROMExport* DivEngine::buildROM(DivROMExportOptions sys) {
   DivROMExport* exporter=NULL;
@@ -50,6 +51,9 @@ DivROMExport* DivEngine::buildROM(DivROMExportOptions sys) {
       break;
     case DIV_ROM_GBA:
       exporter=new DivExportGBA;
+      break;
+    case DIV_ROM_TIA_SIMPLE:
+      exporter=new DivExportTIASimple;
       break;
     default:
       exporter=new DivROMExport;

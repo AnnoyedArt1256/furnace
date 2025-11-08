@@ -153,4 +153,15 @@ void DivEngine::registerROMExports() {
     },
     false, DIV_REQPOL_ANY
   );
+
+  romExportDefs[DIV_ROM_TIA_SIMPLE]=new DivROMExportDef(
+    "TIA simple export", "AArt1256",
+    "TIA simple regdump export (NO TIUNA)\n"
+    "dfjhdajfkdhfskjfdkjadfhdf THIS IS A PLACEHOLDR sdkjfsdklfjdsf",
+    "Binary files", NULL,
+    {
+      DIV_SYSTEM_TIA
+    },
+    false, DIV_REQPOL_ANY
+  );
 }
