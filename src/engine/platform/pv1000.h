@@ -25,12 +25,25 @@
 
 class DivPlatformPV1000: public DivDispatch {
   struct Channel: public SharedChannel<int> {
+    unsigned char fracfreq;
+    unsigned char cmp;
+    unsigned char cntlo;
+    unsigned char cnthi;
+    bool noteon;
     Channel():
-      SharedChannel<int>(1) {}
+      SharedChannel<int>(5),
+      fracfreq(0),
+      cmp(0),
+      cntlo(0),
+      cnthi(0),
+      noteon(false) {}
   };
   Channel chan[3];
   DivDispatchOscBuffer* oscBuf[3];
   bool isMuted[3];
+  bool softwarePitch;
+  int tuning_counter;
+  unsigned int chipdiv_shift;
 
   unsigned char regPool[4];
   d65010g031_t d65010g031;

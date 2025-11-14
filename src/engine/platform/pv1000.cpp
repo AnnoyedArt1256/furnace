@@ -23,7 +23,7 @@
 
 #define rWrite(a,v) {regPool[(a)]=(v)&0xff; d65010g031_write(&d65010g031,a,v);}
 
-#define CHIP_DIVIDER 1024
+#define CHIP_DIVIDER (1024>>chipdiv_shift)
 
 const char* regCheatSheetPV1000[]={
   "CH1_Pitch", "00",
@@ -43,6 +43,29 @@ void DivPlatformPV1000::acquire(short** buf, size_t len) {
   }
   
   for (size_t h=0; h<len; h++) {
+    // (17897725)/((17897725/4)/288) == 1152
+    if (softwarePitch) {
+      tuning_counter += 1024;
+      while (tuning_counter >= 1152) {
+        tuning_counter -= 1152;
+        for (int i=0; i<3; i++) {
+          if (!(chan[i].cmp >= ((chan[i].cntlo++)&0xff))) {
+            chan[i].cntlo = 0;
+            uint16_t new_cnthi = chan[i].cnthi+chan[i].fracfreq;
+            uint8_t freq = chan[i].freq;
+            if (new_cnthi >= 256) freq++;
+            chan[i].cnthi = new_cnthi&0xff;
+            if (chan[i].noteon) {
+              rWrite(i,0x3F-freq);
+            } else {
+              rWrite(i,0x3F);
+            }
+            chan[i].cmp = chan[i].freq;
+            chan[i].cnthi = new_cnthi;
+          }
+        }
+      }
+    }
     short samp=d65010g031_sound_tick(&d65010g031,1);
     buf[0][h]=samp;
     for (int i=0; i<3; i++) {
@@ -80,18 +103,28 @@ void DivPlatformPV1000::tick(bool sysTick) {
       chan[i].freqChanged=true;
     }
     if (chan[i].freqChanged || chan[i].keyOn || chan[i].keyOff) {
-      chan[i].freq=0x3f-parent->calcFreq(chan[i].baseFreq,chan[i].pitch,chan[i].fixedArp?chan[i].baseNoteOverride:chan[i].arpOff,chan[i].fixedArp,true,0,chan[i].pitch2,chipClock,CHIP_DIVIDER);
+      if (softwarePitch) {
+        int freq=0x3fff-parent->calcFreq(chan[i].baseFreq,chan[i].pitch,chan[i].fixedArp?chan[i].baseNoteOverride:chan[i].arpOff,chan[i].fixedArp,true,0,chan[i].pitch2,chipClock,CHIP_DIVIDER);
+    
+        chan[i].freq=(0x3fff-freq)>>8;
+        chan[i].fracfreq=(0x3fff-freq)&0xff;
+      } else {
+        chan[i].freq=0x3f-parent->calcFreq(chan[i].baseFreq,chan[i].pitch,chan[i].fixedArp?chan[i].baseNoteOverride:chan[i].arpOff,chan[i].fixedArp,true,0,chan[i].pitch2,chipClock,CHIP_DIVIDER);
+      }
       if (chan[i].freq<0) chan[i].freq=0;
       if (chan[i].freq>62) chan[i].freq=62;
       if (isMuted[i]) chan[i].keyOn=false;
       if (chan[i].keyOn) {
+        chan[i].noteon = !(isMuted[i] || (chan[i].outVol<=0));
         rWrite(i,(isMuted[i] || (chan[i].outVol<=0)) ? 0x3f : chan[i].freq);
         chan[i].keyOn=false;
       } else if (chan[i].freqChanged && chan[i].active && !isMuted[i]) {
+        chan[i].noteon = !(isMuted[i] || (chan[i].outVol<=0));
         rWrite(i,(isMuted[i] || (chan[i].outVol<=0)) ? 0x3f : chan[i].freq);
       }
       if (chan[i].keyOff) {
         rWrite(i,0x3f);
+        chan[i].noteon = false;
         chan[i].keyOff=false;
       }
       chan[i].freqChanged=false;
@@ -247,6 +280,7 @@ void DivPlatformPV1000::reset() {
   for (int i=0; i<3; i++) {
     chan[i]=Channel();
     chan[i].std.setEngine(parent);
+    chan[i].noteon = false;
   }
   d65010g031_reset(&d65010g031);
   // mute
@@ -273,6 +307,8 @@ void DivPlatformPV1000::setFlags(const DivConfig& flags) {
   for (int i=0; i<3; i++) {
     oscBuf[i]->setRate(rate);
   }
+  softwarePitch=flags.getBool("softwarePitch",false);
+  chipdiv_shift = softwarePitch?8:0;
 }
 
 void DivPlatformPV1000::poke(unsigned int addr, unsigned short val) {
@@ -296,6 +332,7 @@ int DivPlatformPV1000::init(DivEngine* p, int channels, int sugRate, const DivCo
     oscBuf[i]=new DivDispatchOscBuffer;
   }
   setFlags(flags);
+  tuning_counter=0;
   reset();
   return 4;
 }

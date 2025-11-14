@@ -2722,10 +2722,25 @@ bool FurnaceGUI::drawSysConf(int chan, int sysPos, DivSystem type, DivConfig& fl
       }
       break;
     }
+    case DIV_SYSTEM_PV1000: {
+      bool clockSel=flags.getInt("clockSel",0);
+      bool softwarePitch=flags.getBool("softwarePitch",false);
+
+      if (ImGui::Checkbox(_("Software pitch driver"),&softwarePitch)) {
+        altered=true;
+      }
+
+      if (altered) {
+        e->lockSave([&]() {
+          flags.set("clockSel",(int)clockSel);
+          flags.set("softwarePitch",softwarePitch);
+        });
+      } 
+      break;
+    }
     case DIV_SYSTEM_BUBSYS_WSG:
     case DIV_SYSTEM_PET:
     case DIV_SYSTEM_GA20:
-    case DIV_SYSTEM_PV1000:
     case DIV_SYSTEM_C219:
     case DIV_SYSTEM_BIFURCATOR:
     case DIV_SYSTEM_POWERNOISE:
