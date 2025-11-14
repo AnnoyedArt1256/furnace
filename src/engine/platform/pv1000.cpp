@@ -116,14 +116,14 @@ void DivPlatformPV1000::tick(bool sysTick) {
       if (isMuted[i]) chan[i].keyOn=false;
       if (chan[i].keyOn) {
         chan[i].noteon = !(isMuted[i] || (chan[i].outVol<=0));
-        rWrite(i,(isMuted[i] || (chan[i].outVol<=0)) ? 0x3f : chan[i].freq);
+        if (!softwarePitch) rWrite(i,(isMuted[i] || (chan[i].outVol<=0)) ? 0x3f : chan[i].freq);
         chan[i].keyOn=false;
       } else if (chan[i].freqChanged && chan[i].active && !isMuted[i]) {
         chan[i].noteon = !(isMuted[i] || (chan[i].outVol<=0));
-        rWrite(i,(isMuted[i] || (chan[i].outVol<=0)) ? 0x3f : chan[i].freq);
+        if (!softwarePitch) rWrite(i,(isMuted[i] || (chan[i].outVol<=0)) ? 0x3f : chan[i].freq);
       }
       if (chan[i].keyOff) {
-        rWrite(i,0x3f);
+        if (!softwarePitch) rWrite(i,0x3f);
         chan[i].noteon = false;
         chan[i].keyOff=false;
       }
