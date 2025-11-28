@@ -769,6 +769,7 @@ src/engine/fileOps/s3m.cpp
 src/engine/fileOps/text.cpp
 src/engine/fileOps/tfm.cpp
 src/engine/fileOps/xm.cpp
+src/engine/fileOps/vt2.cpp
 
 src/engine/fileOps/p.cpp
 src/engine/fileOps/p86.cpp
