@@ -148,7 +148,7 @@ for other operating systems, you may [build the source](#developer-info).
   - built-in sample editor
   - chip mixing settings
   - built-in visualizer in pattern view
-- open-source under GPLv2 or later.
+- open-source under GPLv2 or later/GPLv3. see [LICENSE](LICENSE).
 
 ---
 
@@ -512,7 +512,7 @@ this will play a compatible file and enable the commands view.
 
 # footnotes
 
-copyright (C) 2021-2025 tildearrow and contributors.
+copyright (C) 2021-2026 tildearrow and contributors.
 
 This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 2 of the License, or (at your option) any later version.
 

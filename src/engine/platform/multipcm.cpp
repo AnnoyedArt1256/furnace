@@ -1,6 +1,6 @@
 /**
  * Furnace Tracker - multi-system chiptune tracker
- * Copyright (C) 2021-2025 tildearrow and contributors
+ * Copyright (C) 2021-2026 tildearrow and contributors
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -389,9 +389,9 @@ int DivPlatformMultiPCM::dispatch(DivCommand c) {
       return 127;
     case DIV_CMD_PRE_PORTA:
       if (chan[c.chan].active && c.value2) {
-        if (parent->song.resetMacroOnPorta) chan[c.chan].macroInit(parent->getIns(chan[c.chan].ins,DIV_INS_MULTIPCM));
+        if (parent->song.compatFlags.resetMacroOnPorta) chan[c.chan].macroInit(parent->getIns(chan[c.chan].ins,DIV_INS_MULTIPCM));
       }
-      if (!chan[c.chan].inPorta && c.value && !parent->song.brokenPortaArp && chan[c.chan].std.arp.will && !NEW_ARP_STRAT) {
+      if (!chan[c.chan].inPorta && c.value && !parent->song.compatFlags.brokenPortaArp && chan[c.chan].std.arp.will && !NEW_ARP_STRAT) {
         chan[c.chan].baseFreq=NOTE_FREQUENCY(chan[c.chan].note);
       }
       chan[c.chan].inPorta=c.value;
@@ -493,6 +493,10 @@ void DivPlatformMultiPCM::reset() {
 
 int DivPlatformMultiPCM::getOutputCount() {
   return 2;
+}
+
+bool DivPlatformMultiPCM::hasSoftPan(int ch) {
+  return true;
 }
 
 bool DivPlatformMultiPCM::keyOffAffectsArp(int ch) {

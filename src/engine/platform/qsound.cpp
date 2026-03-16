@@ -1,6 +1,6 @@
 /**
  * Furnace Tracker - multi-system chiptune tracker
- * Copyright (C) 2021-2025 tildearrow and contributors
+ * Copyright (C) 2021-2026 tildearrow and contributors
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -488,7 +488,7 @@ int DivPlatformQSound::dispatch(DivCommand c) {
       chan[c.chan].keyOn=true;
       chan[c.chan].keyOff=false;
       chan[c.chan].macroInit(ins);
-      if (!parent->song.brokenOutVol && !chan[c.chan].std.vol.will) {
+      if (!parent->song.compatFlags.brokenOutVol && !chan[c.chan].std.vol.will) {
         chan[c.chan].outVol=chan[c.chan].vol;
         if (chan[c.chan].isNewQSound) {
           chan[c.chan].resVol=(chan[c.chan].outVol*16383)/255;
@@ -594,9 +594,9 @@ int DivPlatformQSound::dispatch(DivCommand c) {
     }
     case DIV_CMD_PRE_PORTA:
       if (chan[c.chan].active && c.value2) {
-        if (parent->song.resetMacroOnPorta) chan[c.chan].macroInit(parent->getIns(chan[c.chan].ins,DIV_INS_AMIGA));
+        if (parent->song.compatFlags.resetMacroOnPorta) chan[c.chan].macroInit(parent->getIns(chan[c.chan].ins,DIV_INS_AMIGA));
       }
-      if (!chan[c.chan].inPorta && c.value && !parent->song.brokenPortaArp && chan[c.chan].std.arp.will && !NEW_ARP_STRAT) chan[c.chan].baseFreq=QS_NOTE_FREQUENCY(chan[c.chan].note);
+      if (!chan[c.chan].inPorta && c.value && !parent->song.compatFlags.brokenPortaArp && chan[c.chan].std.arp.will && !NEW_ARP_STRAT) chan[c.chan].baseFreq=QS_NOTE_FREQUENCY(chan[c.chan].note);
       chan[c.chan].inPorta=c.value;
       break;
     case DIV_CMD_SAMPLE_POS:
@@ -674,6 +674,10 @@ void DivPlatformQSound::reset() {
 
 int DivPlatformQSound::getOutputCount() {
   return 2;
+}
+
+bool DivPlatformQSound::hasSoftPan(int ch) {
+  return true;
 }
 
 bool DivPlatformQSound::keyOffAffectsArp(int ch) {
@@ -764,6 +768,19 @@ const char* DivPlatformQSound::getSampleMemName(int index) {
 const DivMemoryComposition* DivPlatformQSound::getMemCompo(int index) {
   if (index!=0) return NULL;
   return &memCompo;
+}
+
+DivSamplePos DivPlatformQSound::getSamplePos(int ch) {
+  if (ch>=16) return DivSamplePos();
+  if (chan[ch].sample<0 || chan[ch].sample>=parent->song.sampleLen) return DivSamplePos();
+  int f=chan[ch].freq;
+  unsigned int pos=((qsound_read_data(&chip,(((ch-1)&15)<<3)|0)<<16)&0x7fff0000)|((qsound_read_data(&chip,(ch<<3)|1)^0x8000));
+  if (ch==7) logV("%d pos: %x",ch,pos);
+  return DivSamplePos(
+    chan[ch].sample,
+    pos-(offPCM[chan[ch].sample]^0x8000),
+    f
+  );
 }
 
 void DivPlatformQSound::renderSamples(int sysID) {

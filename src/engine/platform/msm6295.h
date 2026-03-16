@@ -1,6 +1,6 @@
 /**
  * Furnace Tracker - multi-system chiptune tracker
- * Copyright (C) 2021-2025 tildearrow and contributors
+ * Copyright (C) 2021-2026 tildearrow and contributors
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,11 +27,9 @@
 class DivPlatformMSM6295: public DivDispatch, public vgsound_emu_mem_intf {
   protected:
     struct Channel: public SharedChannel<int> {
-      bool furnacePCM;
       int sample;
       Channel():
         SharedChannel<int>(8),
-        furnacePCM(false),
         sample(-1) {}
     };
     Channel chan[4];
@@ -53,7 +51,6 @@ class DivPlatformMSM6295: public DivDispatch, public vgsound_emu_mem_intf {
     unsigned char* adpcmMem;
     size_t adpcmMemLen;
     bool* sampleLoaded;
-    unsigned char sampleBank;
 
     int delay, updateOsc;
 

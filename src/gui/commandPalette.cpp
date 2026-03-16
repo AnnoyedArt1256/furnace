@@ -1,6 +1,6 @@
 /**
  * Furnace Tracker - multi-system chiptune tracker
- * Copyright (C) 2021-2025 tildearrow and contributors
+ * Copyright (C) 2021-2026 tildearrow and contributors
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -367,7 +367,7 @@ void FurnaceGUI::drawPalette() {
           openRecentFile(recentFile[i]);
           break;
         case CMDPAL_TYPE_INSTRUMENTS:
-          curIns=i-1;
+          setCurIns(i-1);
           break;
         case CMDPAL_TYPE_SAMPLES:
           curSample=i;
@@ -381,6 +381,7 @@ void FurnaceGUI::drawPalette() {
               showError("cannot add chip! ("+e->getLastError()+")");
             } else {
               MARK_MODIFIED;
+              recalcTimestamps=true;
             }
             ImGui::CloseCurrentPopup();
             if (e->song.autoSystem) {

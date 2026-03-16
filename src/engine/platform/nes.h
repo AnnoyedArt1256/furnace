@@ -1,6 +1,6 @@
 /**
  * Furnace Tracker - multi-system chiptune tracker
- * Copyright (C) 2021-2025 tildearrow and contributors
+ * Copyright (C) 2021-2026 tildearrow and contributors
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,7 +30,7 @@ class DivPlatformNES: public DivDispatch {
   struct Channel: public SharedChannel<signed char> {
     int prevFreq;
     unsigned char duty, sweep, envMode, len;
-    bool sweepChanged, furnaceDac, setPos;
+    bool sweepChanged, setPos;
     Channel():
       SharedChannel<signed char>(15),
       prevFreq(65535),
@@ -39,7 +39,6 @@ class DivPlatformNES: public DivDispatch {
       envMode(3),
       len(0x1f),
       sweepChanged(false),
-      furnaceDac(false),
       setPos(false) {}
   };
   Channel chan[5];
@@ -59,7 +58,6 @@ class DivPlatformNES: public DivDispatch {
   size_t dpcmMemLen;
   bool* sampleLoaded;
   unsigned char dpcmBank;
-  unsigned char sampleBank;
   unsigned char writeOscBuf;
   unsigned char apuType;
   unsigned char linearCount;

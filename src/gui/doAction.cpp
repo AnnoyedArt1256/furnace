@@ -1,6 +1,6 @@
 /**
  * Furnace Tracker - multi-system chiptune tracker
- * Copyright (C) 2021-2025 tildearrow and contributors
+ * Copyright (C) 2021-2026 tildearrow and contributors
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -143,16 +143,18 @@ void FurnaceGUI::doAction(int what) {
       }
       break;
     case GUI_ACTION_INS_UP:
-      if (--curIns<-1) {
-        curIns=-1;
+      setCurIns(curIns-1);
+      if (curIns<-1) {
+        setCurIns(-1);
       }
       wavePreviewInit=true;
       wantScrollListIns=true;
       updateFMPreview=true;
       break;
     case GUI_ACTION_INS_DOWN:
-      if (++curIns>=(int)e->song.ins.size()) {
-        curIns=((int)e->song.ins.size())-1;
+      setCurIns(curIns+1);
+      if (curIns>=(int)e->song.ins.size()) {
+        setCurIns(((int)e->song.ins.size())-1);
       }
       wavePreviewInit=true;
       wantScrollListIns=true;
@@ -208,6 +210,7 @@ void FurnaceGUI::doAction(int what) {
       followPattern=!followPattern;
       break;
     case GUI_ACTION_FULLSCREEN:
+      if (sysFullScreen) break;
       fullScreen=!fullScreen;
       SDL_SetWindowFullscreen(sdlWin,fullScreen?(SDL_WINDOW_FULLSCREEN|SDL_WINDOW_FULLSCREEN_DESKTOP):0);
       break;
@@ -318,6 +321,12 @@ void FurnaceGUI::doAction(int what) {
     case GUI_ACTION_WINDOW_NOTES:
       nextWindow=GUI_WINDOW_NOTES;
       break;
+    case GUI_ACTION_WINDOW_TUNER:
+      nextWindow=GUI_WINDOW_TUNER;
+      break;
+    case GUI_ACTION_WINDOW_SPECTRUM:
+      nextWindow=GUI_WINDOW_SPECTRUM;
+      break;
     case GUI_ACTION_WINDOW_CHANNELS:
       nextWindow=GUI_WINDOW_CHANNELS;
       break;
@@ -356,6 +365,12 @@ void FurnaceGUI::doAction(int what) {
       break;
     case GUI_ACTION_WINDOW_USER_PRESETS:
       nextWindow=GUI_WINDOW_USER_PRESETS;
+      break;
+    case GUI_ACTION_WINDOW_REF_PLAYER:
+      nextWindow=GUI_WINDOW_REF_PLAYER;
+      break;
+    case GUI_ACTION_WINDOW_MULTI_INS_SETUP:
+      nextWindow=GUI_WINDOW_MULTI_INS_SETUP;
       break;
     
     case GUI_ACTION_COLLAPSE_WINDOW:
@@ -464,6 +479,19 @@ void FurnaceGUI::doAction(int what) {
           break;
         case GUI_WINDOW_USER_PRESETS:
           userPresetsOpen=false;
+          break;
+        case GUI_WINDOW_REF_PLAYER:
+          refPlayerOpen=false;
+          break;
+        case GUI_WINDOW_MULTI_INS_SETUP:
+          multiInsSetupOpen=false;
+          break;
+        case GUI_WINDOW_TUNER:
+          tunerOpen=false;
+          break;
+        case GUI_WINDOW_SPECTRUM:
+          spectrumOpen=false;
+          break;
         default:
           break;
       }
@@ -697,10 +725,10 @@ void FurnaceGUI::doAction(int what) {
       break;
     case GUI_ACTION_PAT_LATCH: {
       DivPattern* pat=e->curPat[cursor.xCoarse].getPattern(e->curOrders->ord[cursor.xCoarse][cursor.order],true);
-      latchIns=pat->data[cursor.y][2];
-      latchVol=pat->data[cursor.y][3];
-      latchEffect=pat->data[cursor.y][4];
-      latchEffectVal=pat->data[cursor.y][5];
+      latchIns=pat->newData[cursor.y][DIV_PAT_INS];
+      latchVol=pat->newData[cursor.y][DIV_PAT_VOL];
+      latchEffect=pat->newData[cursor.y][DIV_PAT_FX(0)];
+      latchEffectVal=pat->newData[cursor.y][DIV_PAT_FXVAL(0)];
       latchTarget=0;
       latchNibble=false;
       break;
@@ -732,7 +760,7 @@ void FurnaceGUI::doAction(int what) {
           break;
         }
       }
-      curIns=e->addInstrument(cursor.xCoarse);
+      setCurIns(e->addInstrument(cursor.xCoarse));
       if (curIns==-1) {
         showError(_("too many instruments!"));
       } else {
@@ -761,7 +789,7 @@ void FurnaceGUI::doAction(int what) {
     case GUI_ACTION_INS_LIST_DUPLICATE:
       if (curIns>=0 && curIns<(int)e->song.ins.size()) {
         int prevIns=curIns;
-        curIns=e->addInstrument(cursor.xCoarse);
+        setCurIns(e->addInstrument(cursor.xCoarse));
         if (curIns==-1) {
           showError(_("too many instruments!"));
         } else {
@@ -813,13 +841,15 @@ void FurnaceGUI::doAction(int what) {
       insEditOpen=true;
       break;
     case GUI_ACTION_INS_LIST_UP:
-      if (--curIns<0) curIns=0;
+      setCurIns(curIns-1);
+      if (curIns<0) setCurIns(0);
       wantScrollListIns=true;
       wavePreviewInit=true;
       updateFMPreview=true;
       break;
     case GUI_ACTION_INS_LIST_DOWN:
-      if (++curIns>=(int)e->song.ins.size()) curIns=((int)e->song.ins.size())-1;
+      setCurIns(curIns+1);
+      if (curIns>=(int)e->song.ins.size()) setCurIns(((int)e->song.ins.size())-1);
       wantScrollListIns=true;
       wavePreviewInit=true;
       updateFMPreview=true;
@@ -927,7 +957,6 @@ void FurnaceGUI::doAction(int what) {
             if (sample!=NULL) {
               DivWavetable* wave=e->song.wave[curWave];
               unsigned int waveLen=wave->len;
-              sample->rate=(int)round(261.625565301*waveLen); // c3
               sample->centerRate=(int)round(261.625565301*waveLen); // c3
               sample->loopStart=0;
               sample->loopEnd=waveLen;
@@ -1016,7 +1045,6 @@ void FurnaceGUI::doAction(int what) {
           e->lockEngine([this,prevSample]() {
             DivSample* sample=e->getSample(curSample);
             if (sample!=NULL) {
-              sample->rate=prevSample->rate;
               sample->centerRate=prevSample->centerRate;
               sample->name=prevSample->name;
               sample->loopStart=prevSample->loopStart;
@@ -1708,7 +1736,7 @@ void FurnaceGUI::doAction(int what) {
       }
 
       DivSample* sample=e->song.sample[curSample];
-      curIns=e->addInstrument(cursor.xCoarse);
+      setCurIns(e->addInstrument(cursor.xCoarse));
       if (curIns==-1) {
         showError(_("too many instruments!"));
       } else {
@@ -1766,6 +1794,103 @@ void FurnaceGUI::doAction(int what) {
           RESET_WAVE_MACRO_ZOOM;
         }
       }
+      break;
+    }
+    case GUI_ACTION_SAMPLE_COPY_NEW: {
+      if (curSample<0 || curSample>=(int)e->song.sample.size()) break;
+      int prevSampleNum=curSample;
+
+      DivSample* sample=e->song.sample[curSample];
+      if (sample->depth!=DIV_SAMPLE_DEPTH_16BIT && sample->depth!=DIV_SAMPLE_DEPTH_8BIT) {
+        showError(_("sample depth must be 16 or 8 bit!"));
+        break;
+      }
+
+      SAMPLE_OP_BEGIN;
+      if (end-start<1) {
+        showError(_("select at least one sample!"));
+        break;
+      }
+
+      curSample=e->addSample();
+      if (curSample==-1) {
+        showError(_("too many samples!"));
+        break;
+      }
+
+      DivSample* prevSample=sample;
+      e->lockEngine([this,prevSample,start,end]() {
+        DivSample* sample=e->getSample(curSample);
+        if (sample!=NULL) {
+          int length=end-start;
+          sample->centerRate=prevSample->centerRate;
+          sample->name=prevSample->name;
+          sample->loopStart=prevSample->loopStart;
+          sample->loopEnd=prevSample->loopEnd;
+          sample->loop=prevSample->loop;
+          sample->loopMode=prevSample->loopMode;
+          sample->brrEmphasis=prevSample->brrEmphasis;
+          sample->brrNoFilter=prevSample->brrNoFilter;
+          sample->dither=prevSample->dither;
+          sample->depth=prevSample->depth;
+          if (sample->init(length)) {
+            if (prevSample->getCurBuf()!=NULL) {
+              int offS=prevSample->getSampleOffset(start,0,sample->depth);
+              int offE=prevSample->getSampleOffset(end,0,sample->depth);
+              uint8_t *srcMem=(uint8_t*)prevSample->getCurBuf();
+              memcpy(sample->getCurBuf(),&srcMem[offS],offE-offS);
+            }
+          }
+        }
+        e->renderSamples();
+      });
+      curSample=prevSampleNum;
+
+      // TODO: confirm these
+      wantScrollListSample=true;
+      MARK_MODIFIED;
+      updateSampleTex=true;
+      notifySampleChange=true;
+      break;
+    }
+
+    case GUI_ACTION_SAMPLE_TRIM_AFTER_LOOP: {
+      if (curSample<0 || curSample>=(int)e->song.sample.size()) break;
+      DivSample* sample=e->song.sample[curSample];
+      if (sample->depth!=DIV_SAMPLE_DEPTH_8BIT && sample->depth!=DIV_SAMPLE_DEPTH_16BIT) break;
+      if (!sample->isLoopable()) break;
+      if ((unsigned int)sample->loopEnd>=sample->samples) break;
+      sample->prepareUndo(true);
+      e->lockEngine([this,sample]() {
+        sample->trim(0,sample->loopEnd);
+        updateSampleTex=true;
+        notifySampleChange=true;
+        e->renderSamples(curSample);
+      });
+      sampleSelStart=-1;
+      sampleSelEnd=-1;
+      MARK_MODIFIED;
+      break;
+    }
+
+    case GUI_ACTION_SAMPLE_TRIM_TO_LOOP: {
+      if (curSample<0 || curSample>=(int)e->song.sample.size()) break;
+      DivSample* sample=e->song.sample[curSample];
+      if (sample->depth!=DIV_SAMPLE_DEPTH_8BIT && sample->depth!=DIV_SAMPLE_DEPTH_16BIT) break;
+      if (!sample->isLoopable()) break;
+      sample->prepareUndo(true);
+      e->lockEngine([this,sample]() {
+        int loopLen=sample->loopEnd-sample->loopStart;
+        sample->trim(sample->loopStart,sample->loopEnd);
+        sample->loopStart=0;
+        sample->loopEnd=loopLen;
+        updateSampleTex=true;
+        notifySampleChange=true;
+        e->renderSamples(curSample);
+      });
+      sampleSelStart=-1;
+      sampleSelEnd=-1;
+      MARK_MODIFIED;
       break;
     }
 
